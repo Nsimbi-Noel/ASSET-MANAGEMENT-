@@ -146,7 +146,7 @@ function initDb() {
     );
   `);
 
-  // Seed Default Users if empty
+  // Seed default users only (no demo data)
   const userCheck = db.prepare('SELECT COUNT(*) as count FROM users');
   const userCount = userCheck.get();
   
@@ -156,73 +156,12 @@ function initDb() {
       VALUES (?, ?, ?, ?, ?)
     `);
 
-    // Hashed default passwords: same as username + '123'
     insertUser.run('admin', hashPassword('admin123'), 'System Administrator', 'Admin', 'Information Technology');
     insertUser.run('manager', hashPassword('manager123'), 'Asset Manager', 'AssetManager', 'Administration');
     insertUser.run('custodian', hashPassword('custodian123'), 'Asset Custodian', 'AssetCustodian', 'Finance');
     insertUser.run('employee', hashPassword('employee123'), 'Regular Employee', 'Employee', 'Registries');
     
-    console.log('Seeded initial user accounts: admin/admin123, manager/manager123, custodian/custodian123, employee/employee123');
-    
-    // Seed some initial assets for testing the system
-    const insertAsset = db.prepare(`
-      INSERT INTO assets (id, name, type, category, serial_number, condition, acquisition_date, cost, supplier, source, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    insertAsset.run('URSB-AST-0001', 'Lenovo ThinkPad L14', 'Laptop', 'IT Equipment', 'LNV-SN-98217', 'New', '2026-01-15', 3500000, 'Datalink Uganda', 'Procurement', 'Active');
-    insertAsset.run('URSB-AST-0002', 'HP LaserJet Pro M404', 'Printer', 'Office Equipment', 'HP-PRNT-1123', 'Good', '2025-11-20', 1200000, 'Sharp Electronics Ltd', 'Procurement', 'In Storage');
-    insertAsset.run('URSB-AST-0003', 'Conference Room Projector Epson', 'Projector', 'IT Equipment', 'EPS-PRJ-5432', 'Refurbished', '2026-02-10', 2500000, 'UNICEF Uganda', 'Donation', 'Active');
-    insertAsset.run('URSB-AST-0004', 'Executive Leather Desk Chair', 'Furniture', 'Fittings', 'FRN-CHR-004', 'Good', '2026-03-01', 450000, 'Furniture World Kampala', 'Procurement', 'Active');
-    insertAsset.run('URSB-AST-0005', 'Dell PowerEdge R740 Server', 'Server', 'IT Infrastructure', 'DLL-SRV-8823', 'Damaged', '2024-05-18', 15000000, 'Dell East Africa', 'Procurement', 'Under Maintenance');
-    insertAsset.run('URSB-AST-0006', 'Broken Office Shredder', 'Shredder', 'Office Equipment', 'SHR-BK-0092', 'Damaged', '2023-08-12', 800000, 'Office Depot Ltd', 'Procurement', 'Disposed');
-
-    // Seed disposal for the disposed asset
-    const insertDisposal = db.prepare(`
-      INSERT INTO disposals (asset_id, disposal_date, method, reason, authorized_by)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-    insertDisposal.run('URSB-AST-0006', '2026-05-10', 'Scrapped', 'Motor burnt out beyond economic repair cost.', 2); // manager is id 2
-
-    // Seed assignments
-    const insertAssignment = db.prepare(`
-      INSERT INTO assignments (asset_id, assigned_to, assigned_by, assignment_date, purpose, notes, confirmed_receipt, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    // Assign Lenovo ThinkPad to custodian
-    insertAssignment.run('URSB-AST-0001', 3, 2, '2026-01-20', 'Daily work and field audits', 'Please handle with care', 1, 'Active');
-    // Assign Conference Room Projector to employee
-    insertAssignment.run('URSB-AST-0003', 4, 2, '2026-02-15', 'Boardroom presentation support', 'Temporary assignment', 0, 'Active');
-
-    // Seed maintenance record
-    const insertMaintenance = db.prepare(`
-      INSERT INTO maintenance (asset_id, service_provider, description, cost, service_date, next_service_date, completed)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    insertMaintenance.run('URSB-AST-0005', 'Dell Service Centre Kampala', 'Power supply replacement and motherboard diagnostic', 1200000, '2026-06-10', '2026-12-10', 0);
-
-    // Seed requests
-    const insertRequest = db.prepare(`
-      INSERT INTO requests (requested_by, asset_name, asset_type, purpose, status)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-    insertRequest.run(4, 'iPad Air for Field Registrations', 'Tablet', 'To register local businesses during the rural outreach program.', 'Pending');
-    insertRequest.run(3, 'Desktop Monitor 27"', 'Monitor', 'Extra screen real-estate for accounts auditing.', 'Approved');
-
-    // Seed audit logs
-    const insertAudit = db.prepare(`
-      INSERT INTO audit_log (user_id, username, action_type, table_name, record_id, details)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    insertAudit.run(2, 'manager', 'CREATE', 'assets', 'URSB-AST-0001', 'Created asset URSB-AST-0001 - Lenovo ThinkPad L14');
-    insertAudit.run(2, 'manager', 'CREATE', 'assets', 'URSB-AST-0002', 'Created asset URSB-AST-0002 - HP LaserJet Pro M404');
-    insertAudit.run(2, 'manager', 'CREATE', 'assets', 'URSB-AST-0003', 'Created asset URSB-AST-0003 - Conference Room Projector Epson');
-    insertAudit.run(2, 'manager', 'CREATE', 'assets', 'URSB-AST-0004', 'Created asset URSB-AST-0004 - Executive Leather Desk Chair');
-    insertAudit.run(2, 'manager', 'CREATE', 'assets', 'URSB-AST-0005', 'Created asset URSB-AST-0005 - Dell PowerEdge R740 Server');
-    insertAudit.run(2, 'manager', 'CREATE', 'assets', 'URSB-AST-0006', 'Created asset URSB-AST-0006 - Broken Office Shredder');
-    insertAudit.run(2, 'manager', 'UPDATE', 'assets', 'URSB-AST-0006', 'Disposed asset URSB-AST-0006');
-
-    console.log('Seeded database with initial assets, assignments, requests, and audit logs.');
+    console.log('Default accounts created: admin, manager, custodian, employee');
   }
 }
 

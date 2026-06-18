@@ -75,13 +75,24 @@ async function runTests() {
 
     // 4. Test Asset Maintenance Cycle
     console.log('\nTesting Asset Maintenance Cycle...');
-    const testMaintAsset = 'URSB-AST-0004'; // seeded Executive Leather Desk Chair
+    const maintAsset = controller.registerAsset(managerUser, {
+      name: 'Test Desk for Maintenance',
+      type: 'Furniture',
+      category: 'Fittings',
+      serial_number: 'SN-MAINT-TEST-001',
+      condition: 'Good',
+      acquisition_date: '2026-06-01',
+      cost: 500000,
+      supplier: 'Test Supplier',
+      source: 'Procurement',
+      status: 'In Storage'
+    });
     
     // Initiate maintenance
     const maintResult = controller.recordMaintenance(managerUser, {
-      assetId: testMaintAsset,
+      assetId: maintAsset.id,
       serviceProvider: 'Kampala Furniture Servicing',
-      description: 'Leather cleaning and structural wheel replacement',
+      description: 'Structural wheel replacement',
       cost: 150000,
       serviceDate: '2026-06-18',
       nextServiceDate: '2026-12-18'
@@ -89,13 +100,13 @@ async function runTests() {
     assert.ok(maintResult.success, 'Maintenance record should be successfully created');
     
     // Verify status toggled to Under Maintenance
-    const maintAssetDetails = controller.getAsset(testMaintAsset);
+    const maintAssetDetails = controller.getAsset(maintAsset.id);
     assert.strictEqual(maintAssetDetails.status, 'Under Maintenance', 'Asset status should toggle to Under Maintenance');
     
     // Test Rule: Prevent assigning an asset under maintenance
     try {
       controller.assignAsset(managerUser, {
-        assetId: testMaintAsset,
+        assetId: maintAsset.id,
         assignedTo: 3,
         assignmentDate: '2026-06-18'
       });
@@ -112,34 +123,45 @@ async function runTests() {
     });
     assert.ok(completeResult.success, 'Maintenance completion should register');
     
-    const postMaintAsset = controller.getAsset(testMaintAsset);
+    const postMaintAsset = controller.getAsset(maintAsset.id);
     assert.strictEqual(postMaintAsset.status, 'Active', 'Asset status should return to Active after servicing completes');
     console.log(`${green}✓ Maintenance completed successfully. Asset returned to Active status.${reset}`);
 
-    // 5. Test Asset Disposal (Soft delete, Read-only status)
+    // 5. Test Asset Disposal
     console.log('\nTesting Asset Disposal...');
-    const testDisposalAsset = 'URSB-AST-0002'; // HP LaserJet Printer
+    const disposalAsset = controller.registerAsset(managerUser, {
+      name: 'Test Item for Disposal',
+      type: 'Shredder',
+      category: 'Office Equipment',
+      serial_number: 'SN-DISP-TEST-001',
+      condition: 'Damaged',
+      acquisition_date: '2026-01-01',
+      cost: 200000,
+      supplier: 'Test Supplier',
+      source: 'Procurement',
+      status: 'In Storage'
+    });
     
     const disposeResult = controller.disposeAsset(managerUser, {
-      assetId: testDisposalAsset,
+      assetId: disposalAsset.id,
       disposalDate: '2026-06-18',
       method: 'Donated',
-      reason: 'Obsolete black-and-white print speed. Donated to local school library.'
+      reason: 'Test disposal for validation.'
     });
     assert.ok(disposeResult.success, 'Disposal should register');
     
-    const disposedAsset = controller.getAsset(testDisposalAsset);
+    const disposedAsset = controller.getAsset(disposalAsset.id);
     assert.strictEqual(disposedAsset.status, 'Disposed', 'Asset status should update to Disposed');
     
-    // Test Rule: Disposed assets remain as read-only records in register
+    // Test Rule: Disposed assets remain in register
     const register = controller.generateAssetRegister({ status: 'Disposed' });
-    const foundInRegister = register.some(a => a.id === testDisposalAsset);
+    const foundInRegister = register.some(a => a.id === disposalAsset.id);
     assert.ok(foundInRegister, 'Disposed asset must remain in system lists under Disposed filter');
     
     // Test Rule: Prevent assignment of disposed asset
     try {
       controller.assignAsset(managerUser, {
-        assetId: testDisposalAsset,
+        assetId: disposalAsset.id,
         assignedTo: 3,
         assignmentDate: '2026-06-18'
       });
@@ -152,7 +174,7 @@ async function runTests() {
     // Test Rule: Prevent scheduling maintenance on disposed asset
     try {
       controller.recordMaintenance(managerUser, {
-        assetId: testDisposalAsset,
+        assetId: disposalAsset.id,
         serviceProvider: 'Repair Tech',
         description: 'Test repair',
         cost: 10000,
