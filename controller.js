@@ -729,11 +729,11 @@ function getDashboardMetrics() {
   });
   
   // 2. Type distribution
-  const typeQuery = db.prepare('SELECT type, COUNT(*) as count FROM assets WHERE status != "Disposed" GROUP BY type');
+  const typeQuery = db.prepare("SELECT type, COUNT(*) as count FROM assets WHERE status != 'Disposed' GROUP BY type");
   const typeDistribution = typeQuery.all();
   
   // 3. Category distribution
-  const catQuery = db.prepare('SELECT category, COUNT(*) as count FROM assets WHERE status != "Disposed" GROUP BY category');
+  const catQuery = db.prepare("SELECT category, COUNT(*) as count FROM assets WHERE status != 'Disposed' GROUP BY category");
   const categoryDistribution = catQuery.all();
   
   // 4. Assigned vs Unassigned
@@ -747,7 +747,7 @@ function getDashboardMetrics() {
   const assignmentRatio = assignedQuery.get() || { assigned: 0, unassigned: 0 };
   
   // 5. Total cost valuation
-  const costQuery = db.prepare('SELECT SUM(cost) as total_val FROM assets WHERE status != "Disposed"');
+  const costQuery = db.prepare("SELECT SUM(cost) as total_val FROM assets WHERE status != 'Disposed'");
   const costVal = costQuery.get()?.total_val || 0;
 
   // 6. Upcoming Maintenance (in next 30 days or overdue)
@@ -790,7 +790,7 @@ function generateAssetRegister(filters = {}) {
     params.push(filters.status);
   } else {
     // Default: show active lists (excluding Disposed unless requested)
-    queryStr += ' AND a.status != "Disposed"';
+    queryStr += " AND a.status != 'Disposed'";
   }
   
   if (filters.type) {
