@@ -728,7 +728,6 @@ async function renderTransfersView(container) {
     const res = await fetch('/api/assets');
     const assetsData = await res.json();
     
-    // Fetch user details for transfer form population
     const usersRes = await fetch('/api/users');
     let usersData = [];
     if (usersRes.ok) usersData = await usersRes.json();
@@ -773,20 +772,9 @@ async function renderTransfersView(container) {
 async function loadTransfersTable() {
   const tbody = document.getElementById('transfers-tbody');
   try {
-    // In our model we can fetch transfers from any specific asset details.
-    // However, to view ALL transfers we can quickly aggregates them by querying assets.
-    // Or we fetch them programmatically. Let's do a loop or a bulk query.
-    // Since we want to display all transfer history, we can fetch audit logs filter or a quick endpoint.
-    // We will retrieve audit logs of type CREATE / UPDATE in transfers.
-    // Wait, let's load all assets' history and extract transfers or let's create a combined endpoint!
-    // Actually, in db.js, we registered table transfers. Let's fetch audits, or retrieve history of each active asset.
-    // An even cleaner way: let's query the database. Wait, do we have an API endpoint?
-    // In server.js we do not have `/api/transfers` GET, but we have audits. Let's fetch audits and filter for table_name = 'transfers'!
-    const res = await fetch('/api/reports/audits');
+    const res = await fetch('/api/transfers');
     if (!res.ok) throw new Error('Failed to load transfers');
-    const audits = await res.json();
-    
-    const transfers = audits.filter(log => log.table_name === 'transfers');
+    const transfers = await res.json();
     
     if (transfers.length === 0) {
       tbody.innerHTML = `<tr><td colspan="6" class="table-empty">No transfer logs recorded.</td></tr>`;
@@ -794,12 +782,14 @@ async function loadTransfersTable() {
     }
     
     tbody.innerHTML = transfers.map(t => {
-      // Parse details: "Transferred asset URSB-AST-0001 from Custodian X to Custodian Y"
       return `
         <tr>
-          <td><strong>${t.record_id}</strong></td>
-          <td colspan="4">${t.details}</td>
-          <td>${t.username}</td>
+          <td><strong>${t.asset_id}</strong></td>
+          <td>${t.from_name} (${t.from_department || '-'})</td>
+          <td>${t.to_name} (${t.to_department || '-'})</td>
+          <td>${t.transfer_date}</td>
+          <td>${t.reason}</td>
+          <td>${t.manager_name}</td>
         </tr>
       `;
     }).join('');
@@ -862,44 +852,33 @@ async function loadMaintenanceTable() {
   const tbody = document.getElementById('maintenance-tbody');
   tbody.innerHTML = `<tr><td colspan="8" class="table-empty">Loading tickets...</td></tr>`;
   try {
-    // In our model we can fetch the dashboard metrics to check upcoming, 
-    // or we can scan audit logs for maintenance.
-    // Or we scan asset registers for assets under status = 'Under Maintenance' and load their details.
-    const underMaint = cacheData.assets.filter(a => a.status === 'Under Maintenance');
+    const res = await fetch('/api/maintenance');
+    if (!res.ok) throw new Error('Failed to load maintenance records');
+    const records = await res.json();
     
-    if (underMaint.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" class="table-empty">No active maintenance events open.</td></tr>`;
+    if (records.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="8" class="table-empty">No maintenance events recorded.</td></tr>`;
       return;
     }
     
-    tbody.innerHTML = '';
-    
-    for (const asset of underMaint) {
-      // Get maintenance history for this asset to find active ticket
-      const res = await fetch(`/api/reports/history/${asset.id}`);
-      if (!res.ok) continue;
-      const history = await res.json();
-      
-      const activeTicket = history.maintenance.find(m => m.completed === 0);
-      if (!activeTicket) continue;
-      
-      const actionBtn = currentUser.role === 'AssetManager' 
-        ? `<button class="btn btn-secondary btn-sm" onclick="completeMaintenancePrompt('${activeTicket.id}', '${asset.id}')">Complete Servicing</button>`
+    tbody.innerHTML = records.map(m => {
+      const actionBtn = currentUser.role === 'AssetManager' && m.completed === 0
+        ? `<button class="btn btn-secondary btn-sm" onclick="completeMaintenancePrompt('${m.id}', '${m.asset_id}')">Complete Servicing</button>`
         : '<span class="text-secondary">-</span>';
-        
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><strong>${asset.id}</strong></td>
-        <td>${asset.name}</td>
-        <td>${activeTicket.service_provider}</td>
-        <td>UGX ${activeTicket.cost.toLocaleString()}</td>
-        <td>${activeTicket.service_date}</td>
-        <td>${activeTicket.next_service_date || 'N/A'}</td>
-        <td><span class="status-badge under-maintenance">In Shop</span></td>
-        <td>${actionBtn}</td>
+      
+      return `
+        <tr>
+          <td><strong>${m.asset_id}</strong></td>
+          <td>${m.asset_name}</td>
+          <td>${m.service_provider}</td>
+          <td>UGX ${Number(m.cost).toLocaleString()}</td>
+          <td>${m.service_date}</td>
+          <td>${m.next_service_date || 'N/A'}</td>
+          <td><span class="status-badge ${m.completed ? 'active' : 'under-maintenance'}">${m.completed ? 'Completed' : 'Open'}</span></td>
+          <td>${actionBtn}</td>
+        </tr>
       `;
-      tbody.appendChild(tr);
-    }
+    }).join('');
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="8" class="table-empty text-danger">${err.message}</td></tr>`;
   }

@@ -352,6 +352,20 @@ function confirmReceipt(reqUser, assignmentId) {
   return { success: true };
 }
 
+function listTransfers() {
+  const query = db.prepare(`
+    SELECT t.*, u1.name as from_name, u1.department as from_department,
+           u2.name as to_name, u2.department as to_department,
+           u3.name as manager_name
+    FROM transfers t
+    JOIN users u1 ON t.from_user_id = u1.id
+    JOIN users u2 ON t.to_user_id = u2.id
+    JOIN users u3 ON t.authorized_by = u3.id
+    ORDER BY t.transfer_date DESC
+  `);
+  return query.all();
+}
+
 function transferAsset(reqUser, { assetId, toUserId, reason, transferDate }) {
   if (reqUser.role !== 'AssetManager') throw new Error('Unauthorized');
   
@@ -420,6 +434,16 @@ function transferAsset(reqUser, { assetId, toUserId, reason, transferDate }) {
 }
 
 // --- Asset Maintenance (Asset Manager Only) ---
+
+function listMaintenance() {
+  const query = db.prepare(`
+    SELECT m.*, a.name as asset_name, a.type as asset_type
+    FROM maintenance m
+    JOIN assets a ON m.asset_id = a.id
+    ORDER BY m.service_date DESC
+  `);
+  return query.all();
+}
 
 function recordMaintenance(reqUser, { assetId, serviceProvider, description, cost, serviceDate, nextServiceDate }) {
   if (reqUser.role !== 'AssetManager') throw new Error('Unauthorized');
@@ -789,7 +813,9 @@ module.exports = {
   assignAsset,
   returnAsset,
   confirmReceipt,
+  listTransfers,
   transferAsset,
+  listMaintenance,
   recordMaintenance,
   completeMaintenance,
   disposeAsset,

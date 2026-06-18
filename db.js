@@ -3,12 +3,12 @@ const path = require('path');
 const fs = require('fs');
 const { hashPassword } = require('./crypto_utils');
 
-// Ensure database path exists
-const dbDir = __dirname;
+// Ensure database directory exists
+const dbPath = process.env.DB_PATH || path.join(__dirname, 'data', 'database.db');
+const dbDir = path.dirname(dbPath);
 if (!fs.existsSync(dbDir)) {
   fs.mkdirSync(dbDir, { recursive: true });
 }
-const dbPath = path.join(dbDir, 'database.db');
 const db = new DatabaseSync(dbPath);
 
 /**

@@ -1,11 +1,41 @@
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
 const controller = require('./controller');
 
-const PORT = 3000;
+// --- Environment Configuration ---
+const PORT = parseInt(process.env.PORT, 10) || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'database.db');
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const SSL_KEY_PATH = process.env.SSL_KEY_PATH || '';
+const SSL_CERT_PATH = process.env.SSL_CERT_PATH || '';
+const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000; // 15 min
+const RATE_LIMIT_MAX_LOGIN = parseInt(process.env.RATE_LIMIT_MAX_LOGIN, 10) || 10;
+
 const PUBLIC_DIR = path.join(__dirname, 'public');
+
+// --- Simple In-Memory Rate Limiter ---
+const rateLimitStore = new Map();
+function rateLimit(key, maxAttempts, windowMs) {
+  const now = Date.now();
+  if (!rateLimitStore.has(key)) {
+    rateLimitStore.set(key, { count: 1, resetAt: now + windowMs });
+    return { allowed: true, remaining: maxAttempts - 1 };
+  }
+  const entry = rateLimitStore.get(key);
+  if (now > entry.resetAt) {
+    rateLimitStore.set(key, { count: 1, resetAt: now + windowMs });
+    return { allowed: true, remaining: maxAttempts - 1 };
+  }
+  entry.count += 1;
+  if (entry.count > maxAttempts) {
+    return { allowed: false, remaining: 0 };
+  }
+  return { allowed: true, remaining: maxAttempts - entry.count };
+}
 
 // MIME types lookup
 const MIME_TYPES = {
@@ -85,6 +115,12 @@ const server = http.createServer(async (req, res) => {
     try {
       // Unauthenticated routes
       if (pathname === '/api/auth/login' && method === 'POST') {
+        const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+        const limit = rateLimit(`login:${clientIp}`, RATE_LIMIT_MAX_LOGIN, RATE_LIMIT_WINDOW_MS);
+        res.setHeader('X-RateLimit-Remaining', String(limit.remaining));
+        if (!limit.allowed) {
+          return sendError(res, 'Too many login attempts. Please try again later.', 429);
+        }
         const body = await parseBody(req);
         const result = controller.login(body.username, body.password);
         
@@ -183,12 +219,18 @@ const server = http.createServer(async (req, res) => {
       }
 
       // 4. Transfers (Managers)
+      if (pathname === '/api/transfers' && method === 'GET') {
+        return sendJSON(res, controller.listTransfers());
+      }
       if (pathname === '/api/transfers' && method === 'POST') {
         const body = await parseBody(req);
         return sendJSON(res, controller.transferAsset(user, body));
       }
 
       // 5. Maintenance (Managers)
+      if (pathname === '/api/maintenance' && method === 'GET') {
+        return sendJSON(res, controller.listMaintenance());
+      }
       if (pathname === '/api/maintenance' && method === 'POST') {
         const body = await parseBody(req);
         return sendJSON(res, controller.recordMaintenance(user, body));
@@ -305,6 +347,23 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`URSB Asset Management System server running at http://localhost:${PORT}`);
-});
+function startServer() {
+  if (SSL_KEY_PATH && SSL_CERT_PATH && fs.existsSync(SSL_KEY_PATH) && fs.existsSync(SSL_CERT_PATH)) {
+    const sslOptions = {
+      key: fs.readFileSync(SSL_KEY_PATH),
+      cert: fs.readFileSync(SSL_CERT_PATH)
+    };
+    https.createServer(sslOptions, server).listen(PORT, HOST, () => {
+      console.log(`URSB Asset Management System running at https://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT} (SSL)`);
+    });
+  } else {
+    server.listen(PORT, HOST, () => {
+      console.log(`URSB Asset Management System running at http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+      if (NODE_ENV === 'production' && !SSL_KEY_PATH) {
+        console.warn('WARNING: Running in production without SSL. Set SSL_KEY_PATH and SSL_CERT_PATH.');
+      }
+    });
+  }
+}
+
+startServer();
