@@ -53,6 +53,9 @@ function showApp() {
   document.getElementById('header-user-name').textContent = currentUser.name;
   document.getElementById('header-user-role').textContent = formatRole(currentUser.role) + ` (${currentUser.department})`;
   document.getElementById('header-user-avatar').textContent = currentUser.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+  document.getElementById('header-user-name').style.cursor = 'pointer';
+  document.getElementById('header-user-name').title = 'Click to change password';
+  document.getElementById('header-user-name').onclick = () => openModal('modal-change-own-password');
   
   // Apply Role-based Access Control (RBAC) on sidebar navigation items
   document.querySelectorAll('.sidebar-nav li').forEach(li => {
@@ -95,6 +98,7 @@ function setupEventListeners() {
 
   // Modal Submissions
   document.getElementById('register-asset-form').addEventListener('submit', submitRegisterAsset);
+  document.getElementById('edit-asset-form').addEventListener('submit', submitEditAsset);
   document.getElementById('assign-asset-form').addEventListener('submit', submitAssignAsset);
   document.getElementById('transfer-asset-form').addEventListener('submit', submitTransferAsset);
   document.getElementById('maintenance-asset-form').addEventListener('submit', submitMaintenanceEvent);
@@ -102,6 +106,7 @@ function setupEventListeners() {
   document.getElementById('create-request-form').addEventListener('submit', submitRequisition);
   document.getElementById('user-form').addEventListener('submit', submitUserForm);
   document.getElementById('change-password-form').addEventListener('submit', submitResetPassword);
+  document.getElementById('change-own-password-form').addEventListener('submit', submitChangeOwnPassword);
 
   // Close modals on backdrop click
   document.getElementById('modal-backdrop').addEventListener('click', () => {
@@ -448,6 +453,10 @@ async function renderRegisterView(container) {
         <svg class="btn-icon" viewBox="0 0 24 24" width="16" height="16"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
         Register Asset
       </button>
+      <button class="btn btn-primary" onclick="openBulkImportModal()">
+        <svg class="btn-icon" viewBox="0 0 24 24" width="16" height="16"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-3.06 16L7.4 14.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L10.94 18zM13 9V3.5L18.5 9H13z"/></svg>
+        Bulk Import
+      </button>
       <button class="btn btn-secondary" onclick="openAssignAssetModal()">
         <svg class="btn-icon" viewBox="0 0 24 24" width="16" height="16"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
         Assign Asset
@@ -524,7 +533,10 @@ function renderAssetTableRows(assets) {
       <td onclick="viewAssetDetails('${a.id}')">${a.custodian_name ? `${a.custodian_name} (${a.custodian_department})` : '<span class="text-secondary">-</span>'}</td>
       <td onclick="viewAssetDetails('${a.id}')"><span class="status-badge ${a.status.toLowerCase().replace(' ', '-')}">${a.status}</span></td>
       <td>
-        <button class="btn btn-outline btn-sm" onclick="viewAssetDetails('${a.id}')">View History</button>
+        <div style="display:flex; gap:0.25rem;">
+          <button class="btn btn-outline btn-sm" onclick="viewAssetDetails('${a.id}')">History</button>
+          ${currentUser.role === 'AssetManager' ? `<button class="btn btn-outline btn-sm" onclick="openEditAssetModal('${a.id}')">Edit</button>` : ''}
+        </div>
       </td>
     </tr>
   `).join('');
@@ -1467,7 +1479,153 @@ async function submitRegisterAsset(e) {
   }
 }
 
-// 3. Open Assign Asset
+// 3. Open Edit Asset
+async function openEditAssetModal(assetId) {
+  try {
+    const res = await fetch(`/api/assets/${assetId}`);
+    if (!res.ok) throw new Error('Failed to load asset');
+    const asset = await res.json();
+
+    document.getElementById('edit-asset-id').value = asset.id;
+    document.getElementById('edit-name').value = asset.name;
+    document.getElementById('edit-type').value = asset.type;
+    document.getElementById('edit-category').value = asset.category;
+    document.getElementById('edit-serial').value = asset.serial_number;
+    document.getElementById('edit-condition').value = asset.condition;
+    document.getElementById('edit-acq-date').value = asset.acquisition_date;
+    document.getElementById('edit-cost').value = asset.cost;
+    document.getElementById('edit-supplier').value = asset.supplier;
+    document.getElementById('edit-source').value = asset.source;
+    document.getElementById('edit-status').value = asset.status;
+
+    openModal('modal-edit-asset');
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function submitEditAsset(e) {
+  e.preventDefault();
+  const assetId = document.getElementById('edit-asset-id').value;
+  const payload = {
+    name: document.getElementById('edit-name').value,
+    type: document.getElementById('edit-type').value,
+    category: document.getElementById('edit-category').value,
+    serial_number: document.getElementById('edit-serial').value,
+    condition: document.getElementById('edit-condition').value,
+    acquisition_date: document.getElementById('edit-acq-date').value,
+    cost: document.getElementById('edit-cost').value,
+    supplier: document.getElementById('edit-supplier').value,
+    source: document.getElementById('edit-source').value,
+    status: document.getElementById('edit-status').value
+  };
+
+  try {
+    const res = await fetch(`/api/assets/${assetId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast('Asset updated successfully!', 'success');
+      closeModal('modal-edit-asset');
+      renderView('register');
+    } else {
+      showToast(data.error || 'Failed to update asset', 'error');
+    }
+  } catch (err) {
+    showToast('Network error during update.', 'error');
+  }
+}
+
+// 4. Bulk Import
+function openBulkImportModal() {
+  document.getElementById('bulk-csv-input').value = '';
+  document.getElementById('bulk-import-result').style.display = 'none';
+  openModal('modal-bulk-import');
+}
+
+async function submitBulkImport() {
+  const csvText = document.getElementById('bulk-csv-input').value.trim();
+  if (!csvText) {
+    showToast('Paste CSV data first', 'error');
+    return;
+  }
+
+  const lines = csvText.split('\n').filter(l => l.trim());
+  const assets = lines.map(line => {
+    const cols = line.split(',').map(c => c.trim());
+    return {
+      name: cols[0] || '',
+      type: cols[1] || '',
+      category: cols[2] || '',
+      serial_number: cols[3] || '',
+      condition: cols[4] || 'Good',
+      acquisition_date: cols[5] || new Date().toISOString().split('T')[0],
+      cost: cols[6] || 0,
+      supplier: cols[7] || 'Unknown',
+      source: cols[8] || 'Procurement',
+      status: cols[9] || 'In Storage'
+    };
+  });
+
+  const resultDiv = document.getElementById('bulk-import-result');
+  resultDiv.style.display = 'block';
+  resultDiv.innerHTML = '<div class="text-center">Importing...</div>';
+
+  try {
+    const res = await fetch('/api/assets/bulk-import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assets })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      resultDiv.innerHTML = `
+        <div class="status-badge active" style="margin-bottom:0.5rem;">✓ ${data.imported} assets imported</div>
+        ${data.errors ? `<div class="status-badge rejected">${data.errors} errors</div>` : ''}
+        <div style="font-size:0.85rem; margin-top:0.5rem; max-height:200px; overflow-y:auto;">
+          ${data.assets.map(a => `<div>${a.id} — ${a.name}</div>`).join('')}
+        </div>
+      `;
+      renderView('register');
+    } else {
+      resultDiv.innerHTML = `<div class="status-badge rejected">${data.error || 'Import failed'}</div>`;
+    }
+  } catch (err) {
+    resultDiv.innerHTML = `<div class="status-badge rejected">Network error: ${err.message}</div>`;
+  }
+}
+
+// 5. Change Own Password
+async function submitChangeOwnPassword(e) {
+  e.preventDefault();
+  const payload = {
+    currentPassword: document.getElementById('own-pass-current').value,
+    newPassword: document.getElementById('own-pass-new').value
+  };
+
+  try {
+    const res = await fetch('/api/auth/password', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast('Password changed successfully!', 'success');
+      closeModal('modal-change-own-password');
+      document.getElementById('change-own-password-form').reset();
+    } else {
+      showToast(data.error || 'Failed to change password', 'error');
+    }
+  } catch (err) {
+    showToast('Network error.', 'error');
+  }
+}
+
+// 6. Open Assign Asset
 async function openAssignAssetModal() {
   document.getElementById('assign-asset-form').reset();
   document.getElementById('assign-date').value = new Date().toISOString().split('T')[0];

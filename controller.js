@@ -192,10 +192,29 @@ function changePassword(reqUser, id, { newPassword }) {
   return { success: true };
 }
 
+function changeOwnPassword(user, { currentPassword, newPassword }) {
+  const query = db.prepare('SELECT * FROM users WHERE id = ?');
+  const dbUser = query.get(user.id);
+
+  if (!dbUser) throw new Error('User not found');
+  if (!verifyPassword(currentPassword, dbUser.password)) {
+    throw new Error('Current password is incorrect');
+  }
+  if (!newPassword || newPassword.length < 6) {
+    throw new Error('New password must be at least 6 characters long');
+  }
+
+  const update = db.prepare('UPDATE users SET password = ? WHERE id = ?');
+  update.run(hashPassword(newPassword), user.id);
+
+  logAudit(user.id, user.username, 'UPDATE', 'users', String(user.id), 'Changed own password');
+  return { success: true };
+}
+
 // --- Asset Registration (Asset Manager Only) ---
 
 function listAssets() {
-  const query = db.prepare('SELECT * FROM assets');
+  const query = db.prepare('SELECT * FROM assets ORDER BY created_at DESC');
   return query.all();
 }
 
@@ -232,6 +251,70 @@ function registerAsset(reqUser, data) {
   }
   
   return { id, name, type, category, serial_number, condition, acquisition_date, cost, supplier, source, status };
+}
+
+function updateAsset(reqUser, id, data) {
+  if (reqUser.role !== 'AssetManager') throw new Error('Unauthorized');
+
+  const asset = getAsset(id);
+  if (asset.status === 'Disposed') throw new Error('Cannot edit a disposed asset');
+
+  const { name, type, category, serial_number, condition, acquisition_date, cost, supplier, source, status } = data;
+
+  if (!name || !type || !category || !serial_number || !condition || !acquisition_date || !cost || !supplier || !source || !status) {
+    throw new Error('All fields are required to update an asset');
+  }
+
+  const update = db.prepare(`
+    UPDATE assets
+    SET name = ?, type = ?, category = ?, serial_number = ?, condition = ?,
+        acquisition_date = ?, cost = ?, supplier = ?, source = ?, status = ?
+    WHERE id = ?
+  `);
+  update.run(name, type, category, serial_number, condition, acquisition_date, parseFloat(cost), supplier, source, status, id);
+
+  logAudit(reqUser.id, reqUser.username, 'UPDATE', 'assets', id, `Updated asset ${name} (${id})`);
+  return { success: true };
+}
+
+function bulkRegisterAssets(reqUser, { assets }) {
+  if (reqUser.role !== 'AssetManager') throw new Error('Unauthorized');
+  if (!Array.isArray(assets) || assets.length === 0) {
+    throw new Error('Provide an array of asset objects');
+  }
+
+  const results = [];
+  const errors = [];
+
+  for (let i = 0; i < assets.length; i++) {
+    const data = assets[i];
+    if (!data.name || !data.type || !data.category || !data.serial_number) {
+      errors.push({ row: i + 1, message: 'Missing required fields (name, type, category, serial_number)' });
+      continue;
+    }
+    try {
+      const id = generateAssetId();
+      const insert = db.prepare(`
+        INSERT INTO assets (id, name, type, category, serial_number, condition, acquisition_date, cost, supplier, source, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      insert.run(
+        id, data.name, data.type, data.category, data.serial_number,
+        data.condition || 'Good',
+        data.acquisition_date || new Date().toISOString().split('T')[0],
+        parseFloat(data.cost || 0),
+        data.supplier || 'Unknown',
+        data.source || 'Procurement',
+        data.status || 'In Storage'
+      );
+      logAudit(reqUser.id, reqUser.username, 'CREATE', 'assets', id, `Bulk imported asset ${data.name} (${id})`);
+      results.push({ id, name: data.name });
+    } catch (err) {
+      errors.push({ row: i + 1, message: err.message });
+    }
+  }
+
+  return { success: true, imported: results.length, errors: errors.length, assets: results, errors };
 }
 
 // --- Asset Assignment & Transfers (Asset Manager & Custodians) ---
@@ -809,6 +892,9 @@ module.exports = {
   listAssets,
   getAsset,
   registerAsset,
+  updateAsset,
+  bulkRegisterAssets,
+  changeOwnPassword,
   listAssignments,
   assignAsset,
   returnAsset,

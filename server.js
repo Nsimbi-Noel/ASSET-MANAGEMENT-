@@ -158,6 +158,12 @@ const server = http.createServer(async (req, res) => {
         return sendJSON(res, { user });
       }
 
+      // Change own password (any authenticated user)
+      if (pathname === '/api/auth/password' && method === 'PUT') {
+        const body = await parseBody(req);
+        return sendJSON(res, controller.changeOwnPassword(user, body));
+      }
+
       // 1. Users CRUD (Admin)
       if (pathname === '/api/users' && method === 'GET') {
         return sendJSON(res, controller.listUsers(user));
@@ -190,10 +196,20 @@ const server = http.createServer(async (req, res) => {
         return sendJSON(res, controller.registerAsset(user, body), 201);
       }
       
+      if (pathname === '/api/assets/bulk-import' && method === 'POST') {
+        const body = await parseBody(req);
+        return sendJSON(res, controller.bulkRegisterAssets(user, body));
+      }
+      
       const assetMatch = pathname.match(/^\/api\/assets\/([A-Za-z0-9\-]+)$/);
       if (assetMatch && method === 'GET') {
         const assetId = assetMatch[1];
         return sendJSON(res, controller.getAsset(assetId));
+      }
+      if (assetMatch && method === 'PUT') {
+        const assetId = assetMatch[1];
+        const body = await parseBody(req);
+        return sendJSON(res, controller.updateAsset(user, assetId, body));
       }
 
       // 3. Assignments (Managers)
