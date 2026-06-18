@@ -2047,10 +2047,10 @@ function showToast(message, type = 'info') {
   
   container.appendChild(toast);
   
-  // Auto-remove after 4 seconds
+  // Auto-remove after 2 seconds
   const timer = setTimeout(() => {
     removeToast(toast);
-  }, 4000);
+  }, 2000);
   
   toast.querySelector('.toast-close').onclick = () => {
     clearTimeout(timer);
