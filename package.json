@@ -1,0 +1,25 @@
+{
+  "name": "ursb-asset-management-system",
+  "version": "1.0.0",
+  "description": "",
+  "main": "controller.js",
+  "scripts": {
+    "test": "node test_api.js",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nsimbi-Noel/URSB-Asset-Management-System.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Nsimbi-Noel/URSB-Asset-Management-System/issues"
+  },
+  "homepage": "https://github.com/Nsimbi-Noel/URSB-Asset-Management-System#readme",
+  "dependencies": {
+    "html-pdf-node": "^1.0.7"
+  }
+}
