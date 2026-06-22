@@ -1,8 +1,8 @@
-# URSB Asset Management System (AMS) - Refined Edition
+# URSB Asset Management System (AMS)
 
 A comprehensive Node.js-based asset management system for the Uganda Registration Services Bureau (URSB), designed to track, manage, and maintain institutional assets with role-based access control and detailed audit trails.
 
-## 🎯 Project Overview
+## Project Overview
 
 The URSB Asset Management System provides a complete solution for managing organizational assets including IT equipment, office furniture, infrastructure, and other institutional resources. The system supports complex workflows including asset registration, assignment, transfers, maintenance tracking, and disposal management.
 
@@ -18,7 +18,7 @@ The URSB Asset Management System provides a complete solution for managing organ
 - **Transfer Management**: Track asset transfers between custodians
 - **Advanced Reporting**: Asset register with filtering, dashboard metrics, and audit logs
 
-## 🏗️ System Architecture
+##  System Architecture
 
 ### Technology Stack
 
@@ -41,7 +41,7 @@ The system uses 9 main tables:
 8. **audit_log** - Complete system audit trail
 9. **sessions** - Active user sessions
 
-## 📊 Sample Data
+## Sample Data
 
 The system includes comprehensive sample data with:
 
@@ -84,7 +84,7 @@ Employee:
 
 Additional users (manager2-3, custodian2-8, employee2-23) are automatically seeded.
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
@@ -118,7 +118,7 @@ Additional users (manager2-3, custodian2-8, employee2-23) are automatically seed
    - Open your browser and navigate to `http://localhost:3000`
    - Log in with any of the seeded user credentials
 
-## 📡 API Endpoints
+## API Endpoints
 
 ### Authentication
 
@@ -173,7 +173,7 @@ Additional users (manager2-3, custodian2-8, employee2-23) are automatically seed
 - `GET /api/reports/history/:assetId` - Complete asset history
 - `GET /api/reports/audits` - System audit logs (Admin/AssetManager only)
 
-## 🔐 Role-Based Access Control
+## Role-Based Access Control
 
 ### Admin
 - Full system access
@@ -200,7 +200,7 @@ Additional users (manager2-3, custodian2-8, employee2-23) are automatically seed
 - Submit asset requests
 - View own requests
 
-## 🔄 Refinements Implemented
+## Refinements Implemented
 
 ### Backend Enhancements
 
@@ -224,7 +224,7 @@ Additional users (manager2-3, custodian2-8, employee2-23) are automatically seed
 3. **Comprehensive User Base**: 35 users with various roles and departments
 4. **Historical Data**: Complete audit trail and transaction history
 
-## 📋 File Structure
+## File Structure
 
 ```
 ursb-ams/
@@ -241,7 +241,7 @@ ursb-ams/
 └── README.md              # This file
 ```
 
-## 🧪 Testing the System
+## Testing the System
 
 ### Quick Test
 
@@ -277,7 +277,7 @@ curl -X GET http://localhost:3000/api/reports/dashboard \
   -H "Authorization: Bearer <session_id>"
 ```
 
-## 🔧 Customization
+## Customization
 
 ### Adding New Users
 
@@ -295,7 +295,7 @@ Modify the asset generation in `seed.js` or use the UI to register assets manual
 
 To use a different database, modify `db.js` to connect to your preferred database system.
 
-## 📝 Notes
+## Notes
 
 - The database file (`database.db`) is created automatically on first run
 - All passwords are hashed using bcrypt-like algorithms
@@ -303,7 +303,7 @@ To use a different database, modify `db.js` to connect to your preferred databas
 - The system maintains a complete audit trail of all operations
 - Foreign key constraints are enforced for data integrity
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Server won't start
 - Ensure Node.js 22.x is installed
@@ -320,11 +320,11 @@ To use a different database, modify `db.js` to connect to your preferred databas
 - Check that the user has appropriate permissions
 - Verify the asset status is not "Disposed" (unless viewing disposals)
 
-## 📞 Support
+## Support
 
 For issues or questions about the URSB Asset Management System, please refer to the system documentation or contact the IT department.
 
-## 📄 License
+## License
 
 This system is proprietary to the Uganda Registration Services Bureau.
 
