@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>URSB Asset Management System</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" type="image/jpeg" href="ursb-logo.jpg">
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="light-mode">
+  
+  <!-- In-app Notifications Container -->
+  <div id="toast-container"></div>
+
+  <!-- ================= AUTH CONTAINER ================= -->
+  <div id="auth-container" class="auth-wrapper">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="ursb-logo-placeholder">
+          <img src="ursb-logo.jpg" alt="URSB Logo">
+        </div>
+        <h2>Asset Management System</h2>
+        <p class="auth-lead">Sign in to manage and track institutional assets</p>
+      </div>
+      
+      <form id="login-form">
+        <div class="form-group">
+          <label for="login-username">Username</label>
+          <input type="text" id="login-username" placeholder="Enter your username" required autocomplete="username">
+        </div>
+        
+        <div class="form-group">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" placeholder="Enter your password" required autocomplete="current-password">
+        </div>
+
+        <div class="form-error-msg" id="login-error"></div>
+
+        <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+      </form>
+      
+      <div class="auth-footer">
+        <p>© 2026 Uganda Registration Services Bureau. All rights reserved.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= APP CONTAINER ================= -->
+  <div id="app-container" class="app-layout" style="display: none;">
+    
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-logo">
+          <div class="brand-logo-mark">
+            <img src="ursb-logo.jpg" alt="URSB Logo">
+          </div>
+          <div class="brand-logo-text">
+            <span class="logo-main">URSB</span>
+            <span class="logo-sub">Asset Manager</span>
+          </div>
+        </div>
+      </div>
+      
+      <nav class="sidebar-nav">
+        <ul>
+          <li data-role="All"><a href="#" class="nav-link active" data-view="dashboard">
+            <svg class="nav-icon" viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+            Dashboard
+          </a></li>
+          <li data-role="All"><a href="#" class="nav-link" data-view="register">
+            <svg class="nav-icon" viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
+            Asset Register
+          </a></li>
+          <li data-role="AssetManager,AssetCustodian,Employee"><a href="#" class="nav-link" data-view="assignments">
+            <svg class="nav-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+            Assignments
+          </a></li>
+          <li data-role="AssetManager"><a href="#" class="nav-link" data-view="transfers">
+            <svg class="nav-icon" viewBox="0 0 24 24"><path d="M16 17.01V10h-2v7.01h-3L15 21l4-3.99h-3zM9 3L5 6.99h3V14h2V6.99h3L9 3z"/></svg>
+            Transfers
+          </a></li>
+          <li data-role="AssetManager"><a href="#" class="nav-link" data-view="maintenance">
+            <svg class="nav-icon" viewBox="0 0 24 24"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.3C.5 6.7.9 9.8 2.9 11.8c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.6z"/></svg>
+            Maintenance
+          </a></li>
+          <li data-role="AssetManager"><a href="#" class="nav-link" data-view="disposals">
+            <svg class="nav-icon" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+            Disposals
+          </a></li>
+          <li data-role="All"><a href="#" class="nav-link" data-view="requests">
+            <svg class="nav-icon" viewBox="0 0 24 24"><path d="M19 3H4.99c-1.11 0-1.98.89-1.98 2L3 19c0 1.1.88 2 1.99 2H19c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>
+            Requests
+          </a></li>
+          <li data-role="Admin"><a href="#" class="nav-link" data-view="users">
+            <svg class="nav-icon" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            User Accounts
+          </a></li>
+          <li data-role="Admin,AssetManager"><a href="#" class="nav-link" data-view="audits">
+            <svg class="nav-icon" viewBox="0 0 24 24"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
+            Audit Logs
+          </a></li>
+        </ul>
+      </nav>
+      
+      <div class="sidebar-footer">
+        <button id="logout-btn" class="btn btn-outline btn-block">
+          <svg class="btn-icon" viewBox="0 0 24 24" width="16" height="16"><path d="M10.09 15.59L11.5 17l5-5-5-5-1.41 1.41L12.67 11H3v2h9.67l-2.58 2.59zM19 3H5c-1.11 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>
+          Log Out
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      
+      <!-- Top Header Bar -->
+      <header class="app-header">
+        <div class="header-search">
+          <h1 id="view-title">Dashboard</h1>
+        </div>
+        <div class="header-user">
+          <div class="alerts-badge-container" id="alerts-indicator" style="display: none;">
+            <svg class="alert-icon" viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"/></svg>
+            <span class="alerts-count" id="alerts-count">0</span>
+            <!-- Notifications Dropdown -->
+            <div class="alerts-dropdown" id="alerts-dropdown">
+              <div class="dropdown-header">System Notifications</div>
+              <ul class="dropdown-list" id="alerts-list">
+                <li class="dropdown-empty">No critical alerts.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="user-profile">
+            <div class="user-avatar" id="header-user-avatar">AM</div>
+            <div class="user-info">
+              <span class="user-name" id="header-user-name">User Name</span>
+              <span class="user-role" id="header-user-role">Asset Manager</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Dynamic View Wrapper -->
+      <section class="content-viewport" id="viewport">
+        <!-- Content will be dynamically populated here by app.js -->
+      </section>
+      
+    </main>
+  </div>
+
+  <!-- ================= MODALS SECTION ================= -->
+  
+  <!-- General Backdrop -->
+  <div class="modal-backdrop" id="modal-backdrop" style="display: none;"></div>
+
+  <!-- Modal: Asset Details & History -->
+  <div class="modal" id="modal-asset-detail" style="display: none;">
+    <div class="modal-header">
+      <h3 id="detail-asset-id">Asset Details</h3>
+      <button class="modal-close" onclick="closeModal('modal-asset-detail')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchDetailTab('tab-general')">General Info</button>
+        <button class="tab-btn" onclick="switchDetailTab('tab-history')">Asset History</button>
+      </div>
+      
+      <div id="tab-general" class="tab-content active">
+        <div class="grid grid-2">
+          <div><strong>Asset Name:</strong> <span id="det-name"></span></div>
+          <div><strong>Category:</strong> <span id="det-category"></span></div>
+          <div><strong>Type:</strong> <span id="det-type"></span></div>
+          <div><strong>Serial Number:</strong> <span id="det-serial"></span></div>
+          <div><strong>Condition:</strong> <span class="status-badge" id="det-condition"></span></div>
+          <div><strong>Status:</strong> <span class="status-badge" id="det-status"></span></div>
+          <div><strong>Acquisition Date:</strong> <span id="det-acq-date"></span></div>
+          <div><strong>Cost (UGX):</strong> <span id="det-cost"></span></div>
+          <div><strong>Supplier:</strong> <span id="det-supplier"></span></div>
+          <div><strong>Source:</strong> <span id="det-source"></span></div>
+        </div>
+        
+        <div class="detail-section" id="det-current-custodian-box" style="display: none; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+          <h4>Current Custodian Details</h4>
+          <div class="grid grid-2">
+            <div><strong>Assigned To:</strong> <span id="det-custodian-name"></span></div>
+            <div><strong>Department:</strong> <span id="det-custodian-dept"></span></div>
+            <div><strong>Assignment Date:</strong> <span id="det-custodian-date"></span></div>
+            <div><strong>Purpose:</strong> <span id="det-custodian-purpose"></span></div>
+          </div>
+        </div>
+      </div>
+      
+      <div id="tab-history" class="tab-content">
+        <div class="timeline" id="detail-history-timeline">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-asset-detail')">Close</button>
+    </div>
+  </div>
+
+  <!-- Modal: Register Asset -->
+  <div class="modal" id="modal-register-asset" style="display: none;">
+    <div class="modal-header">
+      <h3>Register New Asset</h3>
+      <button class="modal-close" onclick="closeModal('modal-register-asset')">&times;</button>
+    </div>
+    <form id="register-asset-form">
+      <div class="modal-body">
+        <div class="grid grid-2">
+          <div class="form-group">
+            <label for="reg-name">Asset Name*</label>
+            <input type="text" id="reg-name" required placeholder="e.g. Dell Latitude 5420">
+          </div>
+          <div class="form-group">
+            <label for="reg-type">Asset Type*</label>
+            <input type="text" id="reg-type" required placeholder="e.g. Laptop, Printer, Router">
+          </div>
+          <div class="form-group">
+            <label for="reg-category">Category*</label>
+            <select id="reg-category" required>
+              <option value="">Select Category</option>
+              <option value="IT Equipment">IT Equipment</option>
+              <option value="IT Infrastructure">IT Infrastructure</option>
+              <option value="Office Equipment">Office Equipment</option>
+              <option value="Furniture">Furniture</option>
+              <option value="Fittings">Fittings</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="reg-serial">Serial Number*</label>
+            <input type="text" id="reg-serial" required placeholder="Manufacturer Serial Number">
+          </div>
+          <div class="form-group">
+            <label for="reg-condition">Condition*</label>
+            <select id="reg-condition" required>
+              <option value="New">New</option>
+              <option value="Good">Good</option>
+              <option value="Refurbished">Refurbished</option>
+              <option value="Damaged">Damaged</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="reg-acq-date">Acquisition Date*</label>
+            <input type="date" id="reg-acq-date" required>
+          </div>
+          <div class="form-group">
+            <label for="reg-cost">Cost (UGX)*</label>
+            <input type="number" id="reg-cost" required min="0" placeholder="Acquisition cost in UGX">
+          </div>
+          <div class="form-group">
+            <label for="reg-supplier">Supplier*</label>
+            <input type="text" id="reg-supplier" required placeholder="Supplier or Vendor name">
+          </div>
+          <div class="form-group">
+            <label for="reg-source">Source*</label>
+            <select id="reg-source" required>
+              <option value="Procurement">Procurement</option>
+              <option value="Donation">Donation</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="reg-status">Initial Status*</label>
+            <select id="reg-status" required>
+              <option value="Active">Active</option>
+              <option value="In Storage">In Storage</option>
+              <option value="Under Maintenance">Under Maintenance</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-register-asset')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Register Asset</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Modal: Edit Asset -->
+  <div class="modal" id="modal-edit-asset" style="display: none;">
+    <div class="modal-header">
+      <h3>Edit Asset</h3>
+      <button class="modal-close" onclick="closeModal('modal-edit-asset')">&times;</button>
+    </div>
+    <form id="edit-asset-form">
+      <input type="hidden" id="edit-asset-id">
+      <div class="modal-body">
+        <div class="grid grid-2">
+          <div class="form-group">
+            <label for="edit-name">Asset Name*</label>
+            <input type="text" id="edit-name" required>
+          </div>
+          <div class="form-group">
+            <label for="edit-type">Asset Type*</label>
+            <input type="text" id="edit-type" required>
+          </div>
+          <div class="form-group">
+            <label for="edit-category">Category*</label>
+            <select id="edit-category" required>
+              <option value="IT Equipment">IT Equipment</option>
+              <option value="IT Infrastructure">IT Infrastructure</option>
+              <option value="Office Equipment">Office Equipment</option>
+              <option value="Furniture">Furniture</option>
+              <option value="Fittings">Fittings</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="edit-serial">Serial Number*</label>
+            <input type="text" id="edit-serial" required>
+          </div>
+          <div class="form-group">
+            <label for="edit-condition">Condition*</label>
+            <select id="edit-condition" required>
+              <option value="New">New</option>
+              <option value="Good">Good</option>
+              <option value="Refurbished">Refurbished</option>
+              <option value="Damaged">Damaged</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="edit-acq-date">Acquisition Date*</label>
+            <input type="date" id="edit-acq-date" required>
+          </div>
+          <div class="form-group">
+            <label for="edit-cost">Cost (UGX)*</label>
+            <input type="number" id="edit-cost" required min="0">
+          </div>
+          <div class="form-group">
+            <label for="edit-supplier">Supplier*</label>
+            <input type="text" id="edit-supplier" required>
+          </div>
+          <div class="form-group">
+            <label for="edit-source">Source*</label>
+            <select id="edit-source" required>
+              <option value="Procurement">Procurement</option>
+              <option value="Donation">Donation</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="edit-status">Status*</label>
+            <select id="edit-status" required>
+              <option value="Active">Active</option>
+              <option value="In Storage">In Storage</option>
+              <option value="Under Maintenance">Under Maintenance</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-edit-asset')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Modal: Bulk Import Assets -->
+  <div class="modal" id="modal-bulk-import" style="display: none;">
+    <div class="modal-header">
+      <h3>Bulk Import Assets</h3>
+      <button class="modal-close" onclick="closeModal('modal-bulk-import')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>CSV Format</label>
+        <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:0.5rem;">
+          Paste CSV data with columns: <code>name, type, category, serial_number, condition, acquisition_date, cost, supplier, source, status</code>
+        </p>
+        <textarea id="bulk-csv-input" rows="8" placeholder="e.g.&#10;Dell Monitor, Monitor, IT Equipment, SN-001, Good, 2026-06-01, 800000, Dell Uganda, Procurement, In Storage&#10;Office Chair, Furniture, Fittings, SN-002, New, 2026-06-01, 350000, Furniture World, Procurement, In Storage" style="width:100%; font-family:monospace; font-size:0.85rem;"></textarea>
+      </div>
+      <div id="bulk-import-result" style="display:none;"></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline" onclick="closeModal('modal-bulk-import')">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="submitBulkImport()">Import Assets</button>
+    </div>
+  </div>
+
+  <!-- Modal: Change Own Password -->
+  <div class="modal" id="modal-change-own-password" style="display: none;">
+    <div class="modal-header">
+      <h3>Change Your Password</h3>
+      <button class="modal-close" onclick="closeModal('modal-change-own-password')">&times;</button>
+    </div>
+    <form id="change-own-password-form">
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="own-pass-current">Current Password*</label>
+          <input type="password" id="own-pass-current" required>
+        </div>
+        <div class="form-group">
+          <label for="own-pass-new">New Password*</label>
+          <input type="password" id="own-pass-new" required placeholder="Min 6 characters">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-change-own-password')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Update Password</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Modal: Assign Asset -->
+  <div class="modal" id="modal-assign-asset" style="display: none;">
+    <div class="modal-header">
+      <h3>Assign Active Asset</h3>
+      <button class="modal-close" onclick="closeModal('modal-assign-asset')">&times;</button>
+    </div>
+    <form id="assign-asset-form">
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="assign-asset-select">Select Asset*</label>
+          <select id="assign-asset-select" required>
+            <!-- Dynamically populated with in-storage or unassigned active assets -->
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="assign-user-select">Assign To (Custodian)*</label>
+          <select id="assign-user-select" required>
+            <!-- Dynamically populated with active users -->
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="assign-date">Assignment Date*</label>
+          <input type="date" id="assign-date" required>
+        </div>
+        <div class="form-group">
+          <label for="assign-purpose">Purpose of Assignment</label>
+          <input type="text" id="assign-purpose" placeholder="e.g. Field registration operations">
+        </div>
+        <div class="form-group">
+          <label for="assign-notes">Notes</label>
+          <textarea id="assign-notes" placeholder="Additional notes or specifications..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-assign-asset')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Assign Asset</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Modal: Transfer Asset -->
+  <div class="modal" id="modal-transfer-asset" style="display: none;">
+    <div class="modal-header">
+      <h3>Transfer Asset Custodian</h3>
+      <button class="modal-close" onclick="closeModal('modal-transfer-asset')">&times;</button>
+    </div>
+    <form id="transfer-asset-form">
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="trans-asset-select">Select Assigned Asset*</label>
+          <select id="trans-asset-select" required>
+            <!-- Populated dynamically with active assigned assets -->
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Current Custodian / Department</label>
+          <input type="text" id="trans-current-custodian" disabled class="form-control-disabled">
+        </div>
+        <div class="form-group">
+          <label for="trans-user-select">Transfer To (New Custodian)*</label>
+          <select id="trans-user-select" required>
+            <!-- Populated dynamically with active users -->
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="trans-date">Transfer Date*</label>
+          <input type="date" id="trans-date" required>
+        </div>
+        <div class="form-group">
+          <label for="trans-reason">Reason for Transfer*</label>
+          <textarea id="trans-reason" required placeholder="Provide justification for transferring the asset..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-transfer-asset')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Authorize Transfer</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Modal: Record Maintenance -->
+  <div class="modal" id="modal-record-maintenance" style="display: none;">
+    <div class="modal-header">
+      <h3>Record Maintenance Event</h3>
+      <button class="modal-close" onclick="closeModal('modal-record-maintenance')">&times;</button>
+    </div>
+    <form id="maintenance-asset-form">
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="maint-asset-select">Select Asset*</label>
+          <select id="maint-asset-select" required>
+            <!-- Populated with all non-disposed assets -->
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="maint-provider">Service Provider*</label>
+          <input type="text" id="maint-provider" required placeholder="e.g. Dell Service Centre Kampala">
+        </div>
+        <div class="form-group">
+          <label for="maint-date">Service Date*</label>
+          <input type="date" id="maint-date" required>
+        </div>
+        <div class="form-group">
+          <label for="maint-next-date">Next Service Due Date</label>
+          <input type="date" id="maint-next-date">
+        </div>
+        <div class="form-group">
+          <label for="maint-cost">Maintenance Cost (UGX)*</label>
+          <input type="number" id="maint-cost" required min="0" placeholder="Cost in UGX">
+        </div>
+        <div class="form-group">
+          <label for="maint-desc">Service Description / Diagnostic Details*</label>
+          <textarea id="maint-desc" required placeholder="Provide breakdown of servicing done..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-record-maintenance')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Open Maintenance Event</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Modal: Asset Disposal Confirmation (Mandatory Review Step) -->
+  <div class="modal" id="modal-dispose-asset" style="display: none;">
+    <div class="modal-header">
+      <h3>Confirm Asset Disposal</h3>
+      <button class="modal-close" onclick="closeModal('modal-dispose-asset')">&times;</button>
+    </div>
+    <form id="dispose-asset-form">
+      <div class="modal-body">
+        <div class="warning-banner">
+          <svg class="warning-icon" viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+          <div>
+            <strong>CAUTION:</strong> Disposing of an asset removes it from active inventories. This action is irreversible. The asset record will be permanently locked as read-only.
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="disp-asset-select">Select Asset to Dispose*</label>
+          <select id="disp-asset-select" required>
+            <!-- Populated with non-disposed assets -->
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="disp-date">Disposal Date*</label>
+          <input type="date" id="disp-date" required>
+        </div>
+        <div class="form-group">
+          <label for="disp-method">Disposal Method*</label>
+          <select id="disp-method" required>
+            <option value="Scrapped">Scrapped</option>
+            <option value="Auctioned">Auctioned</option>
+            <option value="Donated">Donated</option>
+            <option value="Destroyed">Destroyed</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="disp-reason">Disposal Reason (Justification)*</label>
+          <textarea id="disp-reason" required placeholder="Provide details on why this asset is being disposed (e.g., Obsolete, broken beyond repair)..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-dispose-asset')">Cancel</button>
+        <button type="submit" class="btn btn-danger">Confirm & Commit Disposal</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Modal: Submit Asset Request -->
+  <div class="modal" id="modal-create-request" style="display: none;">
+    <div class="modal-header">
+      <h3>Submit Asset Requisition</h3>
+      <button class="modal-close" onclick="closeModal('modal-create-request')">&times;</button>
+    </div>
+    <form id="create-request-form">
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="req-asset-name">Asset Description / Specification*</label>
+          <input type="text" id="req-asset-name" required placeholder="e.g. Ergonomic Office Desk, Monitor 24inch">
+        </div>
+        <div class="form-group">
+          <label for="req-asset-type">Asset Type / Category*</label>
+          <input type="text" id="req-asset-type" required placeholder="e.g. Furniture, IT Hardware">
+        </div>
+        <div class="form-group">
+          <label for="req-purpose">Purpose of Request*</label>
+          <textarea id="req-purpose" required placeholder="State how this asset will be used for official duties..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-create-request')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Submit Request</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Modal: Manage User Accounts (Admin Only) -->
+  <div class="modal" id="modal-manage-user" style="display: none;">
+    <div class="modal-header">
+      <h3 id="user-modal-title">Create User Account</h3>
+      <button class="modal-close" onclick="closeModal('modal-manage-user')">&times;</button>
+    </div>
+    <form id="user-form">
+      <input type="hidden" id="user-form-id">
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="usr-username">Username*</label>
+          <input type="text" id="usr-username" required placeholder="e.g. noel.nsimbi">
+        </div>
+        <div class="form-group" id="usr-pass-group">
+          <label for="usr-password">Password*</label>
+          <input type="password" id="usr-password" required placeholder="Min 6 characters">
+        </div>
+        <div class="form-group">
+          <label for="usr-name">Full Name*</label>
+          <input type="text" id="usr-name" required placeholder="First and Last Name">
+        </div>
+        <div class="form-group">
+          <label for="usr-role">System Role*</label>
+          <select id="usr-role" required>
+            <option value="Employee">Employee (Asset Requesting)</option>
+            <option value="AssetCustodian">Asset Custodian (Receiving Assets)</option>
+            <option value="AssetManager">Asset Manager (Full Inventory Operations)</option>
+            <option value="Admin">System Administrator</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="usr-department">Department*</label>
+          <input type="text" id="usr-department" required placeholder="e.g. Information Technology, Finance">
+        </div>
+        <div class="form-group" id="usr-status-group" style="display: none;">
+          <label for="usr-status">Account Status*</label>
+          <select id="usr-status">
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-manage-user')">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="usr-submit-btn">Create User</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Modal: Change Password (Admin Only) -->
+  <div class="modal" id="modal-change-password" style="display: none;">
+    <div class="modal-header">
+      <h3>Reset User Password</h3>
+      <button class="modal-close" onclick="closeModal('modal-change-password')">&times;</button>
+    </div>
+    <form id="change-password-form">
+      <input type="hidden" id="change-pass-user-id">
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Target User</label>
+          <input type="text" id="change-pass-username" disabled class="form-control-disabled">
+        </div>
+        <div class="form-group">
+          <label for="change-pass-new">New Password*</label>
+          <input type="password" id="change-pass-new" required placeholder="Enter new password (min 6 characters)">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-change-password')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Reset Password</button>
+      </div>
+    </form>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
