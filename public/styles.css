@@ -192,6 +192,22 @@ button, input, select, textarea {
   box-shadow: 0 4px 12px rgba(214, 40, 40, 0.2);
 }
 
+/* Logout button — prominent red in sidebar */
+.btn-logout {
+  background-color: rgba(214, 40, 40, 0.15);
+  border-color: rgba(214, 40, 40, 0.5);
+  color: #ff6b6b;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.btn-logout:hover {
+  background-color: rgba(214, 40, 40, 0.85);
+  border-color: transparent;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(214, 40, 40, 0.35);
+}
+
 .btn-sm {
   padding: 0.4rem 0.8rem;
   font-size: 0.85rem;
@@ -215,24 +231,40 @@ button, input, select, textarea {
   justify-content: center;
   min-height: 100vh;
   padding: 1.5rem;
-  background-image: url('login-bg.jpg');
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
   overflow: hidden;
 }
 
-.auth-wrapper::before {
-  content: '';
+/* Slideshow backgrounds */
+.login-slideshow {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(7, 23, 42, 0.55) 0%, rgba(7, 23, 42, 0.4) 100%);
+  z-index: 0;
+}
+.login-slideshow .slide {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0;
+  transition: opacity 1.5s ease-in-out;
+}
+.login-slideshow .slide.active {
+  opacity: 1;
+}
+
+/* Dark overlay on top of slideshow */
+.auth-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(180deg, rgba(7, 23, 42, 0.65) 0%, rgba(7, 23, 42, 0.5) 100%);
   pointer-events: none;
 }
 
 .auth-card {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   background-color: var(--card-bg);
   padding: 3rem 2.5rem;
   border-radius: var(--radius-lg);
@@ -1048,6 +1080,7 @@ tr:hover td {
   padding: 1.5rem;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .modal-footer {
@@ -1057,6 +1090,18 @@ tr:hover td {
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
+  /* Ensure footer is always visible and never hidden by overflow */
+  flex-shrink: 0;
+}
+
+/* Forms inside modals must participate in flex layout so modal-body
+   scrolls and modal-footer stays pinned at the bottom */
+.modal > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
 }
 
 /* Warnings and Banner styles */

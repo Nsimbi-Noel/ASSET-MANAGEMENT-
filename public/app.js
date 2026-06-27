@@ -75,6 +75,11 @@ function showApp() {
   // Load notifications (maintenance due check)
   loadUpcomingAlerts();
 
+  // If an Employee somehow lands on 'register', redirect to dashboard
+  if (currentUser.role === 'Employee' && activeView === 'register') {
+    activeView = 'dashboard';
+  }
+
   // Navigate to default view or dashboard
   navigateTo(activeView);
 }
@@ -154,6 +159,10 @@ async function handleLogout() {
 
 // Navigation & Router
 function navigateTo(view) {
+  // Employees are not allowed to access the Asset Register view
+  if (view === 'register' && currentUser && currentUser.role === 'Employee') {
+    view = 'dashboard';
+  }
   activeView = view;
   document.querySelectorAll('.nav-link').forEach(link => {
     if (link.getAttribute('data-view') === view) {
@@ -2127,3 +2136,20 @@ function sortTable(tableId, colIndex) {
   tbody.innerHTML = '';
   rows.forEach(r => tbody.appendChild(r));
 }
+
+// ================= LOGIN PAGE SLIDESHOW =================
+(function initLoginSlideshow() {
+  const slides = document.querySelectorAll('#login-slideshow .slide');
+  if (!slides.length) return;
+
+  let current = 0;
+
+  function showNext() {
+    slides[current].classList.remove('active');
+    current = (current + 1) % slides.length;
+    slides[current].classList.add('active');
+  }
+
+  // Switch every 10 seconds
+  setInterval(showNext, 10000);
+})();

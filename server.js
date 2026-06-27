@@ -286,6 +286,10 @@ const server = http.createServer(async (req, res) => {
         return sendJSON(res, controller.getDashboardMetrics());
       }
       if (pathname === '/api/reports/register' && method === 'GET') {
+        // Employees are not permitted to access the asset register
+        if (user.role === 'Employee') {
+          return sendError(res, 'Access denied. Employees are not authorised to view the asset register.', 403);
+        }
         // Parse filters
         const filters = {
           status: parsedUrl.query.status,
