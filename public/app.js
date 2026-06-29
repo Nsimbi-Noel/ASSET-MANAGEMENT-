@@ -91,7 +91,48 @@ function setupEventListeners() {
   
   // Logout Button
   document.getElementById('logout-btn').addEventListener('click', handleLogout);
-  
+
+  // ── Sidebar collapse (desktop) ──
+  const appLayout    = document.getElementById('app-container');
+  const collapseBtn  = document.getElementById('sidebar-collapse-btn');
+  const COLLAPSED_KEY = 'sidebar-collapsed';
+
+  // Restore saved state
+  if (localStorage.getItem(COLLAPSED_KEY) === '1') {
+    appLayout.classList.add('sidebar-collapsed');
+  }
+
+  collapseBtn.addEventListener('click', () => {
+    const isNowCollapsed = appLayout.classList.toggle('sidebar-collapsed');
+    localStorage.setItem(COLLAPSED_KEY, isNowCollapsed ? '1' : '0');
+  });
+
+  // ── Mobile hamburger ──
+  const sidebar        = document.getElementById('sidebar');
+  const hamburgerBtn   = document.getElementById('hamburger-btn');
+  const sidebarOverlay = document.getElementById('sidebar-overlay');
+
+  function openMobileSidebar() {
+    sidebar.classList.add('mobile-open');
+    sidebarOverlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeMobileSidebar() {
+    sidebar.classList.remove('mobile-open');
+    sidebarOverlay.classList.remove('active');
+    document.body.style.overflow = '';
+  }
+
+  hamburgerBtn.addEventListener('click', openMobileSidebar);
+  sidebarOverlay.addEventListener('click', closeMobileSidebar);
+
+  // Close mobile sidebar on nav link click
+  document.querySelectorAll('.nav-link').forEach(link => {
+    link.addEventListener('click', () => {
+      if (window.innerWidth <= 768) closeMobileSidebar();
+    });
+  });
+
   // Sidebar Nav Links
   document.querySelectorAll('.nav-link').forEach(link => {
     link.addEventListener('click', (e) => {
@@ -188,6 +229,9 @@ function navigateTo(view) {
   
   // Render View content
   renderView(view);
+
+  // After render, label table cells for mobile card-stack layout
+  requestAnimationFrame(labelTableCells);
 }
 
 // Render Specific Views
@@ -2152,4 +2196,29 @@ function sortTable(tableId, colIndex) {
 
   // Switch every 10 seconds
   setInterval(showNext, 10000);
+})();
+
+// ================================================================
+// MOBILE TABLE LABELLING — adds data-label to each <td> so the
+// CSS card-stack layout can show column names without <thead>
+// ================================================================
+function labelTableCells() {
+  document.querySelectorAll('.table-responsive table, table').forEach(table => {
+    const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent.trim());
+    if (!headers.length) return;
+    table.querySelectorAll('tbody tr').forEach(row => {
+      Array.from(row.querySelectorAll('td')).forEach((td, i) => {
+        if (headers[i]) td.setAttribute('data-label', headers[i]);
+      });
+    });
+  });
+}
+
+// Re-label whenever the viewport content changes (async renders, filter updates)
+(function watchViewport() {
+  const vp = document.getElementById('viewport');
+  if (!vp) return;
+  new MutationObserver(() => {
+    requestAnimationFrame(labelTableCells);
+  }).observe(vp, { childList: true, subtree: true });
 })();

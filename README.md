@@ -41,8 +41,7 @@ A full-featured asset lifecycle management system for the Uganda Registration Se
 
 ```bash
 # 1. Clone
-git clone https://github.com/Nsimbi-Noel/URSB-Asset-Management-System.git
-cd URSB-Asset-Management-System
+git clone https://github.com/Nsimbi-Noel/ASSET-MANAGEMENT-.git
 
 # 2. Start (no install needed — zero deps)
 node server.js
