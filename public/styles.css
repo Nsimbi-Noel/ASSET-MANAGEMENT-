@@ -253,15 +253,6 @@ button, input, select, textarea {
   opacity: 1;
 }
 
-/* Dark overlay on top of slideshow */
-.auth-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  background: linear-gradient(180deg, rgba(7, 23, 42, 0.65) 0%, rgba(7, 23, 42, 0.5) 100%);
-  pointer-events: none;
-}
-
 .auth-card {
   position: relative;
   z-index: 2;
