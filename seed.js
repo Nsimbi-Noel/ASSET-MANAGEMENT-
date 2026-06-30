@@ -76,7 +76,7 @@ function seedData() {
     console.log('Sample assets created.');
   }
 
-  // 3. Create some assignments
+  // 3. Create some assignments (leave a few Active assets unassigned so they show as "Available")
   const assignCheck = db.prepare('SELECT COUNT(*) as count FROM assignments');
   if (assignCheck.get().count === 0) {
     const activeAssets = db.prepare("SELECT id FROM assets WHERE status = 'Active' LIMIT 10").all();
@@ -89,7 +89,8 @@ function seedData() {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      activeAssets.forEach((asset, idx) => {
+      const assetsToAssign = activeAssets.slice(0, 6); // leave the remaining Active assets available
+      assetsToAssign.forEach((asset, idx) => {
         if (employees[idx]) {
           insertAssign.run(asset.id, employees[idx].id, manager.id, '2025-01-10', 'Official Work', 'Assigned during orientation', 1, 'Active');
         }

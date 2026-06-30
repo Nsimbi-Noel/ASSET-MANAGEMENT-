@@ -281,6 +281,13 @@ const server = http.createServer(async (req, res) => {
         return sendJSON(res, controller.actionRequest(user, requestId, body));
       }
 
+      const requestRevokeMatch = pathname.match(/^\/api\/requests\/(\d+)\/revoke$/);
+      if (requestRevokeMatch && method === 'PUT') {
+        const requestId = requestRevokeMatch[1];
+        const body = await parseBody(req);
+        return sendJSON(res, controller.revokeRequest(user, requestId, body));
+      }
+
       // 8. Reports & Dashboards
       if (pathname === '/api/reports/dashboard' && method === 'GET') {
         return sendJSON(res, controller.getDashboardMetrics());

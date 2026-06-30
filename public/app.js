@@ -320,15 +320,44 @@ async function renderDashboardView(container) {
         </div>
       </div>
 
-      <div class="dashboard-grid">
-        <!-- Visualizations -->
+      <!-- Acquisition Trend (full width, stretched) -->
+      <div class="dashboard-card" style="margin-top: 1.5rem;">
+        <h3>Asset Acquisition Trend</h3>
+        <div class="chart-container chart-container-wide">
+          <canvas id="chartStatus"></canvas>
+        </div>
+      </div>
+
+      <div class="dashboard-grid" style="margin-top: 1.5rem;">
+        <!-- Asset Availability Table -->
         <div class="dashboard-card">
-          <h3>Asset Acquisition Trend</h3>
-          <div class="chart-container">
-            <canvas id="chartStatus" width="300" height="240"></canvas>
+          <h3>Asset Availability <span class="text-secondary" style="font-size:0.8rem;font-weight:400;">For request reference</span></h3>
+          <div class="table-responsive" style="max-height: 320px; overflow-y: auto;">
+            <table style="margin-top: 0.5rem;">
+              <thead>
+                <tr>
+                  <th>Asset ID</th>
+                  <th>Asset Name</th>
+                  <th>Category</th>
+                  <th>Availability</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${data.assetAvailability.length === 0 ? `
+                  <tr><td colspan="4" class="text-center text-secondary">No assets to display.</td></tr>
+                ` : data.assetAvailability.map(a => `
+                  <tr>
+                    <td><a href="#" class="text-link" onclick="viewAssetDetails('${a.id}')">${a.id}</a></td>
+                    <td><strong>${a.name}</strong></td>
+                    <td>${a.category}</td>
+                    <td><span class="status-badge ${a.availability === 'Available' ? 'active' : 'under-maintenance'}">${a.availability}</span></td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
           </div>
         </div>
-        
+
         <div class="dashboard-card">
           <h3>Asset Count by Category</h3>
           <div class="chart-container">
@@ -384,9 +413,19 @@ async function renderDashboardView(container) {
 function renderTrendChart(canvasId, trend) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
-  const ctx = canvas.getContext('2d');
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // Size the drawing buffer to match the actual rendered (stretched) size
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.max(rect.width, 300) * dpr;
+  canvas.height = Math.max(rect.height, 240) * dpr;
+
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const cssWidth = canvas.width / dpr;
+  const cssHeight = canvas.height / dpr;
+
+  ctx.clearRect(0, 0, cssWidth, cssHeight);
 
   if (!trend || trend.length === 0) {
     ctx.font = '14px Outfit';
@@ -395,9 +434,9 @@ function renderTrendChart(canvasId, trend) {
     return;
   }
 
-  const padding = { left: 40, right: 20, top: 20, bottom: 40 };
-  const chartWidth = canvas.width - padding.left - padding.right;
-  const chartHeight = canvas.height - padding.top - padding.bottom;
+  const padding = { left: 50, right: 30, top: 30, bottom: 50 };
+  const chartWidth = cssWidth - padding.left - padding.right;
+  const chartHeight = cssHeight - padding.top - padding.bottom;
 
   const values = trend.map(t => t.count);
   const maxVal = Math.max(...values, 1);
@@ -408,38 +447,38 @@ function renderTrendChart(canvasId, trend) {
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(padding.left, padding.top);
-  ctx.lineTo(padding.left, canvas.height - padding.bottom);
-  ctx.lineTo(canvas.width - padding.right, canvas.height - padding.bottom);
+  ctx.lineTo(padding.left, cssHeight - padding.bottom);
+  ctx.lineTo(cssWidth - padding.right, cssHeight - padding.bottom);
   ctx.stroke();
 
   // Gridlines + Y labels
   const ySteps = 4;
-  ctx.font = '10px Outfit';
+  ctx.font = '11px Outfit';
   ctx.fillStyle = '#a0aec0';
   for (let s = 0; s <= ySteps; s++) {
     const val = Math.round((maxVal / ySteps) * s);
-    const y = canvas.height - padding.bottom - (val / maxVal) * chartHeight;
+    const y = cssHeight - padding.bottom - (val / maxVal) * chartHeight;
     ctx.strokeStyle = '#f1f5f9';
     ctx.beginPath();
     ctx.moveTo(padding.left, y);
-    ctx.lineTo(canvas.width - padding.right, y);
+    ctx.lineTo(cssWidth - padding.right, y);
     ctx.stroke();
-    ctx.fillText(val, 6, y + 3);
+    ctx.fillText(val, 10, y + 3);
   }
 
   // Compute point coordinates
   const stepX = trend.length > 1 ? chartWidth / (trend.length - 1) : 0;
   const points = trend.map((t, i) => {
     const x = padding.left + (trend.length > 1 ? stepX * i : chartWidth / 2);
-    const y = canvas.height - padding.bottom - ((t.count - minVal) / maxVal) * chartHeight;
+    const y = cssHeight - padding.bottom - ((t.count - minVal) / maxVal) * chartHeight;
     return { x, y, label: t.month, value: t.count };
   });
 
   // Fill area under line
   ctx.beginPath();
-  ctx.moveTo(points[0].x, canvas.height - padding.bottom);
+  ctx.moveTo(points[0].x, cssHeight - padding.bottom);
   points.forEach(p => ctx.lineTo(p.x, p.y));
-  ctx.lineTo(points[points.length - 1].x, canvas.height - padding.bottom);
+  ctx.lineTo(points[points.length - 1].x, cssHeight - padding.bottom);
   ctx.closePath();
   ctx.fillStyle = 'rgba(10, 68, 142, 0.1)';
   ctx.fill();
@@ -451,27 +490,27 @@ function renderTrendChart(canvasId, trend) {
     else ctx.lineTo(p.x, p.y);
   });
   ctx.strokeStyle = '#0a448e';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 2.5;
   ctx.stroke();
 
   // Draw points + labels
   points.forEach(p => {
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 3.5, 0, 2 * Math.PI);
+    ctx.arc(p.x, p.y, 4.5, 0, 2 * Math.PI);
     ctx.fillStyle = '#0a448e';
     ctx.fill();
 
     // Value label above point
-    ctx.font = 'bold 10px Outfit';
+    ctx.font = 'bold 12px Outfit';
     ctx.fillStyle = '#1a202c';
     ctx.textAlign = 'center';
-    ctx.fillText(p.value, p.x, p.y - 8);
+    ctx.fillText(p.value, p.x, p.y - 12);
 
     // Month label below axis
-    ctx.font = '9px Outfit';
+    ctx.font = '11px Outfit';
     ctx.fillStyle = '#4a5568';
     const shortLabel = p.label ? p.label.substring(2) : ''; // YY-MM
-    ctx.fillText(shortLabel, p.x, canvas.height - padding.bottom + 14);
+    ctx.fillText(shortLabel, p.x, cssHeight - padding.bottom + 18);
   });
   ctx.textAlign = 'left';
 }
@@ -1191,6 +1230,10 @@ function renderRequestTableRows(requests) {
           <button class="btn btn-danger btn-sm" onclick="actionRequestAction('${r.id}', 'Rejected')">Reject</button>
         </div>
       `;
+    } else if (r.status === 'Approved' && currentUser.role === 'AssetManager') {
+      actionBtn = `
+        <button class="btn btn-outline btn-sm" onclick="revokeRequestAction('${r.id}')">Revoke</button>
+      `;
     } else {
       actionBtn = '<span class="text-secondary">-</span>';
     }
@@ -1227,6 +1270,31 @@ async function actionRequestAction(requestId, status) {
       renderView('requests');
     } else {
       showToast(data.error || 'Failed to action request', 'error');
+    }
+  } catch (err) {
+    showToast('Network error.', 'error');
+  }
+}
+
+async function revokeRequestAction(requestId) {
+  const confirmed = confirm('Revoke this previously approved requisition? The employee will no longer be authorised to collect this asset.');
+  if (!confirmed) return;
+
+  const managerNotes = prompt('Enter optional reason for revoking this requisition:');
+  if (managerNotes === null) return; // cancelled
+
+  try {
+    const res = await fetch(`/api/requests/${requestId}/revoke`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ managerNotes })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast('Requisition revoked.', 'success');
+      renderView('requests');
+    } else {
+      showToast(data.error || 'Failed to revoke request', 'error');
     }
   } catch (err) {
     showToast('Network error.', 'error');
@@ -1982,9 +2050,36 @@ async function submitDisposal(e) {
 }
 
 // 7. Requisition Request
-function openCreateRequestModal() {
+async function openCreateRequestModal() {
   document.getElementById('create-request-form').reset();
   openModal('modal-create-request');
+  await populateAvailableAssetsDropdown();
+}
+
+async function populateAvailableAssetsDropdown() {
+  const select = document.getElementById('req-asset-select');
+  if (!select) return;
+  select.innerHTML = `<option value="">Loading available assets...</option>`;
+  try {
+    const res = await fetch('/api/reports/dashboard');
+    if (!res.ok) throw new Error('Failed to load assets');
+    const data = await res.json();
+    const available = (data.assetAvailability || []).filter(a => a.availability === 'Available');
+
+    select.innerHTML = `<option value="">-- Choose an in-stock asset, or describe a new one below --</option>` +
+      (available.length === 0
+        ? `<option value="" disabled>No assets currently available in stock</option>`
+        : available.map(a => `<option value="${a.id}" data-name="${a.name}" data-type="${a.type || a.category}">${a.name} (${a.id}) — ${a.category}</option>`).join(''));
+  } catch (err) {
+    select.innerHTML = `<option value="">-- Could not load available assets --</option>`;
+  }
+}
+
+function handleAvailableAssetSelect(selectEl) {
+  const option = selectEl.options[selectEl.selectedIndex];
+  if (!option || !option.value) return;
+  document.getElementById('req-asset-name').value = option.dataset.name || '';
+  document.getElementById('req-asset-type').value = option.dataset.type || '';
 }
 
 async function submitRequisition(e) {

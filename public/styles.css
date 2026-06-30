@@ -137,6 +137,7 @@ button, input, select, textarea {
 .status-badge.pending { background-color: var(--color-pending-bg); color: var(--color-pending); }
 .status-badge.approved { background-color: var(--color-approved-bg); color: var(--color-approved); }
 .status-badge.rejected { background-color: var(--color-rejected-bg); color: var(--color-rejected); }
+.status-badge.revoked { background-color: var(--color-disposed-bg); color: var(--color-disposed); }
 
 /* Buttons */
 .btn {
@@ -1006,6 +1007,15 @@ button, input, select, textarea {
   align-items: center;
   justify-content: center;
   width: 100%;
+}
+
+.chart-container-wide {
+  height: 380px;
+}
+
+.chart-container-wide canvas {
+  width: 100% !important;
+  height: 100% !important;
 }
 
 /* ================= INTERACTIVE DATA TABLES ================= */

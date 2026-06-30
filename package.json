@@ -20,6 +20,6 @@
   },
   "homepage": "https://github.com/Nsimbi-Noel/URSB-Asset-Management-System#readme",
   "dependencies": {
-    "html-pdf-node": "^1.0.7"
+    "pdf-lib": "^1.17.1"
   }
 }

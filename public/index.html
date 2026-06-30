@@ -608,6 +608,12 @@
     <form id="create-request-form">
       <div class="modal-body">
         <div class="form-group">
+          <label for="req-asset-select">Select from Available Assets <span class="text-secondary" style="font-weight:400;">(optional)</span></label>
+          <select id="req-asset-select" onchange="handleAvailableAssetSelect(this)">
+            <option value="">-- Choose an in-stock asset, or describe a new one below --</option>
+          </select>
+        </div>
+        <div class="form-group">
           <label for="req-asset-name">Asset Description / Specification*</label>
           <input type="text" id="req-asset-name" required placeholder="e.g. Ergonomic Office Desk, Monitor 24inch">
         </div>

@@ -716,6 +716,31 @@ function actionRequest(reqUser, requestId, { status, managerNotes }) {
   return { success: true };
 }
 
+function revokeRequest(reqUser, requestId, { managerNotes }) {
+  if (reqUser.role !== 'AssetManager') throw new Error('Unauthorized');
+
+  const query = db.prepare('SELECT * FROM requests WHERE id = ?');
+  const req = query.get(requestId);
+  if (!req) throw new Error('Request not found');
+  if (req.status !== 'Approved') {
+    throw new Error('Only previously approved requests can be revoked');
+  }
+
+  const note = managerNotes
+    ? `Revoked. ${managerNotes}`
+    : 'Revoked by Asset Manager';
+
+  const update = db.prepare(`
+    UPDATE requests
+    SET status = 'Revoked', manager_notes = ?, actioned_by = ?, actioned_date = date('now')
+    WHERE id = ?
+  `);
+  update.run(note, reqUser.id, requestId);
+
+  logAudit(reqUser.id, reqUser.username, 'UPDATE', 'requests', String(requestId), `Revoked previously approved asset request id ${requestId}. Notes: ${managerNotes || ''}`);
+  return { success: true };
+}
+
 // --- Reports & Dashboards ---
 
 function getDashboardMetrics() {
@@ -776,6 +801,19 @@ function getDashboardMetrics() {
   `);
   const acquisitionTrend = trendQuery.all();
 
+  // 8. Asset availability list (for request reference table)
+  const availabilityQuery = db.prepare(`
+    SELECT a.id, a.name, a.category, a.type, a.status,
+      CASE
+        WHEN a.status = 'Active' AND a.id NOT IN (SELECT asset_id FROM assignments WHERE status = 'Active') THEN 'Available'
+        ELSE 'Unavailable'
+      END as availability
+    FROM assets a
+    WHERE a.status != 'Disposed'
+    ORDER BY a.name ASC
+  `);
+  const assetAvailability = availabilityQuery.all();
+
   return {
     counts,
     typeDistribution,
@@ -783,7 +821,8 @@ function getDashboardMetrics() {
     assignmentRatio,
     totalValuation: costVal,
     upcomingMaintenance,
-    acquisitionTrend
+    acquisitionTrend,
+    assetAvailability
   };
 }
 
@@ -885,15 +924,14 @@ function getAssetHistory(assetId) {
   };
 }
 
-const { generatePdf } = require("./pdf_generator");
+const { generateTablePdf } = require("./pdf_generator");
 const fs = require('fs');
 const path = require('path');
 
-function getLogoDataUri() {
+function getLogoBuffer() {
   try {
     const logoPath = path.join(__dirname, 'public', 'ursb-logo.jpg');
-    const data = fs.readFileSync(logoPath);
-    return `data:image/jpeg;base64,${data.toString('base64')}`;
+    return fs.readFileSync(logoPath);
   } catch (err) {
     return null;
   }
@@ -905,84 +943,35 @@ async function generateAssetRegisterPdf(reqUser, filters) {
   }
 
   const assets = generateAssetRegister(filters);
-  const logoDataUri = getLogoDataUri();
+  const logoBuffer = getLogoBuffer();
 
-  let htmlContent = `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <title>Asset Register Report</title>
-        <style>
-            body { font-family: sans-serif; margin: 1.2cm; }
-            .report-header { text-align: center; margin-bottom: 0.6cm; }
-            .report-header img { max-width: 150px; margin-bottom: 0.2cm; }
-            h1 { color: #0a448e; text-align: center; margin-bottom: 0.6cm; font-size: 1.4em; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 1cm; }
-            th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; font-size: 0.85em; }
-            th { background-color: #f2f2f2; }
-            .footer { font-size: 0.8em; text-align: center; color: #666; position: fixed; bottom: 0; width: 100%; }
-        </style>
-    </head>
-    <body>
-        <div class="report-header">
-          ${logoDataUri ? `<img src="${logoDataUri}" alt="URSB Logo">` : ''}
-        </div>
-        <h1>URSB Asset Register Report</h1>
-        <table>
-            <thead>
-                <tr>
-                    <th>Asset ID</th>
-                    <th>Name</th>
-                    <th>Type</th>
-                    <th>Category</th>
-                    <th>Serial No.</th>
-                    <th>Condition</th>
-                    <th>Acquisition Date</th>
-                    <th>Cost (UGX)</th>
-                    <th>Supplier</th>
-                    <th>Status</th>
-                    <th>Custodian</th>
-                    <th>Department</th>
-                </tr>
-            </thead>
-            <tbody>
-  `;
-
-  assets.forEach(asset => {
-    htmlContent += `
-      <tr>
-          <td>${asset.id}</td>
-          <td>${asset.name}</td>
-          <td>${asset.type}</td>
-          <td>${asset.category}</td>
-          <td>${asset.serial_number}</td>
-          <td>${asset.condition}</td>
-          <td>${asset.acquisition_date}</td>
-          <td>${(asset.cost || 0).toLocaleString()}</td>
-          <td>${asset.supplier}</td>
-          <td>${asset.status}</td>
-          <td>${asset.custodian_name || '-'}</td>
-          <td>${asset.custodian_department || '-'}</td>
-      </tr>
-    `;
-  });
-
-  htmlContent += `
-            </tbody>
-        </table>
-        <div class="footer">Generated by URSB Asset Management System on ${new Date().toLocaleDateString()}</div>
-    </body>
-    </html>
-  `;
+  const rows = assets.map(asset => ({
+    id: asset.id,
+    name: asset.name,
+    type: asset.type,
+    category: asset.category,
+    serial_number: asset.serial_number,
+    condition: asset.condition,
+    acquisition_date: asset.acquisition_date,
+    cost: (asset.cost || 0).toLocaleString(),
+    supplier: asset.supplier,
+    status: asset.status,
+    custodian_name: asset.custodian_name || '-',
+    custodian_department: asset.custodian_department || '-'
+  }));
 
   try {
-    return await generatePdf(htmlContent, { landscape: true });
+    return await generateTablePdf({
+      title: 'URSB Asset Register Report',
+      logoBuffer,
+      columns: ['Asset ID', 'Name', 'Type', 'Category', 'Serial No.', 'Condition', 'Acquisition Date', 'Cost (UGX)', 'Supplier', 'Status', 'Custodian', 'Department'],
+      columnKeys: ['id', 'name', 'type', 'category', 'serial_number', 'condition', 'acquisition_date', 'cost', 'supplier', 'status', 'custodian_name', 'custodian_department'],
+      rows
+    }, true);
   } catch (err) {
     console.error('PDF generation failed:', err);
     throw new Error(
-      'Could not generate the PDF. This is usually caused by a missing/incompatible Chromium install on the server. ' +
-      `Underlying error: ${err.message}`
+      `Could not generate the PDF. Underlying error: ${err.message}`
     );
   }
 }
@@ -1025,6 +1014,7 @@ module.exports = {
   listRequests,
   createRequest,
   actionRequest,
+  revokeRequest,
   getDashboardMetrics,
   generateAssetRegister,
   getAssetHistory,
