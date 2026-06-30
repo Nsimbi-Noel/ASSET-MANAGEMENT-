@@ -766,13 +766,24 @@ function getDashboardMetrics() {
   `);
   const upcomingMaintenance = maintenanceQuery.all();
 
+  // 7. Asset acquisition trend (assets added per month)
+  const trendQuery = db.prepare(`
+    SELECT strftime('%Y-%m', acquisition_date) as month, COUNT(*) as count
+    FROM assets
+    WHERE acquisition_date IS NOT NULL
+    GROUP BY month
+    ORDER BY month ASC
+  `);
+  const acquisitionTrend = trendQuery.all();
+
   return {
     counts,
     typeDistribution,
     categoryDistribution,
     assignmentRatio,
     totalValuation: costVal,
-    upcomingMaintenance
+    upcomingMaintenance,
+    acquisitionTrend
   };
 }
 

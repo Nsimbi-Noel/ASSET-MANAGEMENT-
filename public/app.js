@@ -323,7 +323,7 @@ async function renderDashboardView(container) {
       <div class="dashboard-grid">
         <!-- Visualizations -->
         <div class="dashboard-card">
-          <h3>Asset Distribution by Status</h3>
+          <h3>Asset Acquisition Trend</h3>
           <div class="chart-container">
             <canvas id="chartStatus" width="300" height="240"></canvas>
           </div>
@@ -372,7 +372,7 @@ async function renderDashboardView(container) {
     `;
     
     // Draw canvas charts offline-ready
-    renderStatusChart('chartStatus', data.counts);
+    renderTrendChart('chartStatus', data.acquisitionTrend);
     renderCategoryChart('chartCategory', data.categoryDistribution);
     
   } catch (err) {
@@ -380,59 +380,100 @@ async function renderDashboardView(container) {
   }
 }
 
-// Draw Status Pie Chart
-function renderStatusChart(canvasId, counts) {
+// Draw Asset Acquisition Trend Line Chart
+function renderTrendChart(canvasId, trend) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  
-  const labels = ['Active', 'In Storage', 'Under Maint'];
-  const values = [counts.Active, counts.InStorage, counts.UnderMaintenance];
-  const colors = ['#2ec4b6', '#3182ce', '#dd6b20'];
-  const total = values.reduce((sum, v) => sum + v, 0);
-  
-  if (total === 0) {
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (!trend || trend.length === 0) {
     ctx.font = '14px Outfit';
     ctx.fillStyle = '#718096';
-    ctx.fillText('No active asset data to display', 40, 100);
+    ctx.fillText('No acquisition data to display', 40, 100);
     return;
   }
 
-  // Draw Pie
-  const centerX = 100;
-  const centerY = 120;
-  const radius = 80;
-  let startAngle = 0;
-  
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
-  for (let i = 0; i < values.length; i++) {
-    if (values[i] === 0) continue;
-    
-    const sliceAngle = (values[i] / total) * 2 * Math.PI;
-    
+  const padding = { left: 40, right: 20, top: 20, bottom: 40 };
+  const chartWidth = canvas.width - padding.left - padding.right;
+  const chartHeight = canvas.height - padding.top - padding.bottom;
+
+  const values = trend.map(t => t.count);
+  const maxVal = Math.max(...values, 1);
+  const minVal = 0;
+
+  // Axes
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padding.left, padding.top);
+  ctx.lineTo(padding.left, canvas.height - padding.bottom);
+  ctx.lineTo(canvas.width - padding.right, canvas.height - padding.bottom);
+  ctx.stroke();
+
+  // Gridlines + Y labels
+  const ySteps = 4;
+  ctx.font = '10px Outfit';
+  ctx.fillStyle = '#a0aec0';
+  for (let s = 0; s <= ySteps; s++) {
+    const val = Math.round((maxVal / ySteps) * s);
+    const y = canvas.height - padding.bottom - (val / maxVal) * chartHeight;
+    ctx.strokeStyle = '#f1f5f9';
     ctx.beginPath();
-    ctx.moveTo(centerX, centerY);
-    ctx.arc(centerX, centerY, radius, startAngle, startAngle + sliceAngle);
-    ctx.closePath();
-    ctx.fillStyle = colors[i];
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(canvas.width - padding.right, y);
+    ctx.stroke();
+    ctx.fillText(val, 6, y + 3);
+  }
+
+  // Compute point coordinates
+  const stepX = trend.length > 1 ? chartWidth / (trend.length - 1) : 0;
+  const points = trend.map((t, i) => {
+    const x = padding.left + (trend.length > 1 ? stepX * i : chartWidth / 2);
+    const y = canvas.height - padding.bottom - ((t.count - minVal) / maxVal) * chartHeight;
+    return { x, y, label: t.month, value: t.count };
+  });
+
+  // Fill area under line
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, canvas.height - padding.bottom);
+  points.forEach(p => ctx.lineTo(p.x, p.y));
+  ctx.lineTo(points[points.length - 1].x, canvas.height - padding.bottom);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(10, 68, 142, 0.1)';
+  ctx.fill();
+
+  // Draw line
+  ctx.beginPath();
+  points.forEach((p, i) => {
+    if (i === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  });
+  ctx.strokeStyle = '#0a448e';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Draw points + labels
+  points.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 3.5, 0, 2 * Math.PI);
+    ctx.fillStyle = '#0a448e';
     ctx.fill();
-    
-    startAngle += sliceAngle;
-  }
-  
-  // Legend
-  ctx.font = '13px Outfit';
-  let legendY = 60;
-  for (let i = 0; i < labels.length; i++) {
-    const pct = total > 0 ? Math.round((values[i] / total) * 100) : 0;
-    ctx.fillStyle = colors[i];
-    ctx.fillRect(205, legendY - 10, 12, 12);
-    
+
+    // Value label above point
+    ctx.font = 'bold 10px Outfit';
     ctx.fillStyle = '#1a202c';
-    ctx.fillText(`${labels[i]}: ${values[i]} (${pct}%)`, 225, legendY);
-    legendY += 30;
-  }
+    ctx.textAlign = 'center';
+    ctx.fillText(p.value, p.x, p.y - 8);
+
+    // Month label below axis
+    ctx.font = '9px Outfit';
+    ctx.fillStyle = '#4a5568';
+    const shortLabel = p.label ? p.label.substring(2) : ''; // YY-MM
+    ctx.fillText(shortLabel, p.x, canvas.height - padding.bottom + 14);
+  });
+  ctx.textAlign = 'left';
 }
 
 // Draw Category Bar Chart

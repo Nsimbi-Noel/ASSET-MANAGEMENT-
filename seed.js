@@ -7,23 +7,31 @@ function seedData() {
   const departments = ['Information Technology', 'Administration', 'Finance', 'Registries', 'Legal', 'Human Resources', 'Public Relations'];
   const roles = ['Admin', 'AssetManager', 'AssetCustodian', 'Employee'];
   
-  // 1. Create 25 Users
-  const userCheck = db.prepare('SELECT COUNT(*) as count FROM users');
-  const currentUserCount = userCheck.get().count;
-  
-  if (currentUserCount < 25) {
+  // 1. Create 30 Employee Users (to match the 30 sample assets)
+  const employeeNames = [
+    'Brenda Nansubuga', 'James Okello', 'Grace Nakato', 'Brian Mugisha', 'Patricia Achieng',
+    'Allan Kato', 'Sarah Namutebi', 'Moses Ssemwogerere', 'Esther Nabirye', 'Daniel Wasswa',
+    'Florence Atim', 'Joseph Lubega', 'Agnes Kobusingye', 'Robert Tumusiime', 'Joyce Birungi',
+    'Peter Ochieng', 'Mary Nankya', 'Henry Byaruhanga', 'Christine Nalubega', 'Charles Opio',
+    'Diana Nantongo', 'Andrew Were', 'Ruth Akello', 'David Mubiru', 'Catherine Namugga',
+    'Samuel Kintu', 'Irene Apio', 'Paul Tugume', 'Harriet Nansamba', 'Tom Egadu'
+  ];
+
+  const employeeCheck = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'Employee'");
+  const currentEmployeeCount = employeeCheck.get().count;
+
+  if (currentEmployeeCount < 30) {
     const insertUser = db.prepare(`
       INSERT INTO users (username, password, name, role, department)
       VALUES (?, ?, ?, ?, ?)
     `);
 
-    for (let i = currentUserCount + 1; i <= 25; i++) {
-      const username = `user${i}`;
-      const name = `Sample User ${i}`;
-      const role = roles[i % roles.length];
+    for (let i = currentEmployeeCount + 1; i <= 30; i++) {
+      const username = `employee${i}`;
+      const name = employeeNames[(i - 1) % employeeNames.length];
       const dept = departments[i % departments.length];
       try {
-        insertUser.run(username, hashPassword('password123'), name, role, dept);
+        insertUser.run(username, hashPassword('password123'), name, 'Employee', dept);
       } catch (e) {
         // Skip if username exists
       }
@@ -55,7 +63,10 @@ function seedData() {
       const id = `URSB-AST-${String(i).padStart(4, '0')}`;
       const serial = `SN-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
       const condition = ['New', 'Good', 'Refurbished'][i % 3];
-      const acqDate = `2024-0${(i % 9) + 1}-15`;
+      const acqMonth = ((i * 2) % 18) + 1; // spread across 18 months
+      const acqYear = acqMonth <= 12 ? 2024 : 2025;
+      const acqMonthNorm = acqMonth <= 12 ? acqMonth : acqMonth - 12;
+      const acqDate = `${acqYear}-${String(acqMonthNorm).padStart(2, '0')}-15`;
       const cost = 500000 + (Math.random() * 5000000);
       const supplier = ['Dell Uganda', 'HP East Africa', 'Simba Telecom', 'Office World'][i % 4];
       const status = ['Active', 'In Storage', 'Under Maintenance'][i % 3];

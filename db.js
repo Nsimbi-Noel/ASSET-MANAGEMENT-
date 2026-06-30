@@ -159,7 +159,7 @@ function initDb() {
     insertUser.run('admin', hashPassword('admin123'), 'System Administrator', 'Admin', 'Information Technology');
     insertUser.run('manager', hashPassword('manager123'), 'Asset Manager', 'AssetManager', 'Administration');
     insertUser.run('custodian', hashPassword('custodian123'), 'Asset Custodian', 'AssetCustodian', 'Finance');
-    insertUser.run('employee', hashPassword('employee123'), 'Regular Employee', 'Employee', 'Registries');
+    insertUser.run('employee', hashPassword('employee123'), 'Brenda Nansubuga', 'Employee', 'Registries');
     
     console.log('Default accounts created: admin, manager, custodian, employee');
   }
