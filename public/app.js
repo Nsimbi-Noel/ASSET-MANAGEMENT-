@@ -610,6 +610,14 @@ async function renderRegisterView(container) {
             <option value="In Storage">In Storage</option>
             <option value="Under Maintenance">Under Maintenance</option>
           </select>
+          <select id="asset-filter-dept" class="filter-select" onchange="filterAssetTable()">
+            <option value="">All Departments</option>
+            ${Array.from(new Set(data.map(a => a.custodian_department).filter(d => d))).map(dept => `<option value="${dept}">${dept}</option>`).join('')}
+          </select>
+          <select id="asset-filter-custodian" class="filter-select" onchange="filterAssetTable()">
+            <option value="">All Custodians</option>
+            ${Array.from(new Map(data.map(a => [a.custodian_name, a.assigned_to]).filter(x => x[0])).entries()).map(([name, id]) => `<option value="${id}">${name}</option>`).join('')}
+          </select>
         </div>
         <div style="display:flex; gap:0.5rem;">
           ${actionsHtml}
@@ -678,27 +686,45 @@ function renderAssetTableRows(assets) {
   `).join('');
 }
 
-function filterAssetTable() {
-  const searchVal = document.getElementById('asset-search').value.toLowerCase();
-  const typeVal = document.getElementById('asset-filter-type').value;
-  const statusVal = document.getElementById('asset-filter-status').value;
+function getFilteredAssets() {
+  const searchVal = document.getElementById('asset-search')?.value.toLowerCase() || '';
+  const typeVal = document.getElementById('asset-filter-type')?.value || '';
+  const statusVal = document.getElementById('asset-filter-status')?.value || '';
+  const deptVal = document.getElementById('asset-filter-dept')?.value || '';
+  const custodianVal = document.getElementById('asset-filter-custodian')?.value || '';
   
-  const filtered = cacheData.assets.filter(a => {
+  return cacheData.assets.filter(a => {
     const matchesSearch = a.name.toLowerCase().includes(searchVal) || 
                           a.id.toLowerCase().includes(searchVal) || 
                           a.serial_number.toLowerCase().includes(searchVal);
     const matchesType = !typeVal || a.type === typeVal;
     const matchesStatus = !statusVal || a.status === statusVal;
-    return matchesSearch && matchesType && matchesStatus;
+    const matchesDept = !deptVal || a.custodian_department === deptVal;
+    const matchesCustodian = !custodianVal || a.assigned_to == custodianVal;
+    return matchesSearch && matchesType && matchesStatus && matchesDept && matchesCustodian;
   });
-  
+}
+
+function filterAssetTable() {
+  const filtered = getFilteredAssets();
   renderAssetTableRows(filtered);
 }
 
 // Export register to CSV
 async function exportAssetRegisterPDF() {
   try {
-    const res = await fetch("/api/reports/pdf/asset-register");
+    const typeVal = document.getElementById('asset-filter-type')?.value || '';
+    const statusVal = document.getElementById('asset-filter-status')?.value || '';
+    const deptVal = document.getElementById('asset-filter-dept')?.value || '';
+    const custodianVal = document.getElementById('asset-filter-custodian')?.value || '';
+    
+    const query = new URLSearchParams();
+    if (typeVal) query.append('type', typeVal);
+    if (statusVal) query.append('status', statusVal);
+    if (deptVal) query.append('department', deptVal);
+    if (custodianVal) query.append('custodian', custodianVal);
+
+    const res = await fetch(`/api/reports/pdf/asset-register?${query.toString()}`);
     if (!res.ok) throw new Error("Failed to generate PDF report.");
     
     const blob = await res.blob();
@@ -718,14 +744,16 @@ async function exportAssetRegisterPDF() {
 }
 
 function exportAssetRegisterCSV() {
-  if (cacheData.assets.length === 0) {
+  const filtered = getFilteredAssets();
+
+  if (filtered.length === 0) {
     showToast('No asset data to export.', 'error');
     return;
   }
   
   let csvContent = 'Asset ID,Asset Name,Type,Category,Serial Number,Condition,Acquisition Date,Cost (UGX),Supplier,Source,Custodian,Department,Status\n';
   
-  cacheData.assets.forEach(a => {
+  filtered.forEach(a => {
     const custodian = a.custodian_name ? a.custodian_name.replace(/"/g, '""') : '';
     const dept = a.custodian_department ? a.custodian_department.replace(/"/g, '""') : '';
     csvContent += `"${a.id}","${a.name.replace(/"/g, '""')}","${a.type}","${a.category}","${a.serial_number}","${a.condition}","${a.acquisition_date}",${a.cost},"${a.supplier.replace(/"/g, '""')}","${a.source}","${custodian}","${dept}","${a.status}"\n`;
@@ -1291,7 +1319,7 @@ async function revokeRequestAction(requestId) {
     });
     const data = await res.json();
     if (res.ok) {
-      showToast('Requisition revoked.', 'success');
+      showToast('Requisition revoked successfully.', 'success');
       renderView('requests');
     } else {
       showToast(data.error || 'Failed to revoke request', 'error');

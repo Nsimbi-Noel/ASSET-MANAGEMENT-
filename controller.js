@@ -938,7 +938,7 @@ function getLogoBuffer() {
 }
 
 async function generateAssetRegisterPdf(reqUser, filters) {
-  if (reqUser.role !== 'Admin' && reqUser.role !== 'AssetManager') {
+  if (reqUser.role !== 'Admin' && reqUser.role !== 'AssetManager' && reqUser.role !== 'AssetCustodian') {
     throw new Error('Unauthorized to generate asset register PDF');
   }
 
