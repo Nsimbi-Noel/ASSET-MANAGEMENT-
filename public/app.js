@@ -409,7 +409,7 @@ async function renderDashboardView(container) {
   }
 }
 
-// Draw Asset Acquisition Trend Line Chart
+// Draw Asset Acquisition Trend Line Chart with Enhanced Styling
 function renderTrendChart(canvasId, trend) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
@@ -442,9 +442,13 @@ function renderTrendChart(canvasId, trend) {
   const maxVal = Math.max(...values, 1);
   const minVal = 0;
 
-  // Axes
-  ctx.strokeStyle = '#e2e8f0';
-  ctx.lineWidth = 1;
+  // Draw subtle background
+  ctx.fillStyle = 'rgba(248, 250, 252, 0.5)';
+  ctx.fillRect(padding.left, padding.top, chartWidth, chartHeight);
+
+  // Axes with enhanced styling
+  ctx.strokeStyle = '#cbd5e0';
+  ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(padding.left, padding.top);
   ctx.lineTo(padding.left, cssHeight - padding.bottom);
@@ -453,17 +457,18 @@ function renderTrendChart(canvasId, trend) {
 
   // Gridlines + Y labels
   const ySteps = 4;
-  ctx.font = '11px Outfit';
-  ctx.fillStyle = '#a0aec0';
+  ctx.font = 'bold 11px Outfit';
+  ctx.fillStyle = '#718096';
   for (let s = 0; s <= ySteps; s++) {
     const val = Math.round((maxVal / ySteps) * s);
     const y = cssHeight - padding.bottom - (val / maxVal) * chartHeight;
-    ctx.strokeStyle = '#f1f5f9';
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(padding.left, y);
     ctx.lineTo(cssWidth - padding.right, y);
     ctx.stroke();
-    ctx.fillText(val, 10, y + 3);
+    ctx.fillText(val, 10, y + 4);
   }
 
   // Compute point coordinates
@@ -474,40 +479,74 @@ function renderTrendChart(canvasId, trend) {
     return { x, y, label: t.month, value: t.count };
   });
 
-  // Fill area under line
+  // Create gradient for area fill
+  const gradient = ctx.createLinearGradient(0, padding.top, 0, cssHeight - padding.bottom);
+  gradient.addColorStop(0, 'rgba(10, 68, 142, 0.25)');
+  gradient.addColorStop(1, 'rgba(10, 68, 142, 0.02)');
+
+  // Fill area under line with gradient
   ctx.beginPath();
   ctx.moveTo(points[0].x, cssHeight - padding.bottom);
   points.forEach(p => ctx.lineTo(p.x, p.y));
   ctx.lineTo(points[points.length - 1].x, cssHeight - padding.bottom);
   ctx.closePath();
-  ctx.fillStyle = 'rgba(10, 68, 142, 0.1)';
+  ctx.fillStyle = gradient;
   ctx.fill();
 
-  // Draw line
+  // Draw line with shadow effect
+  ctx.shadowColor = 'rgba(10, 68, 142, 0.15)';
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 2;
   ctx.beginPath();
   points.forEach((p, i) => {
     if (i === 0) ctx.moveTo(p.x, p.y);
     else ctx.lineTo(p.x, p.y);
   });
   ctx.strokeStyle = '#0a448e';
-  ctx.lineWidth = 2.5;
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
   ctx.stroke();
+  ctx.shadowColor = 'transparent';
 
-  // Draw points + labels
-  points.forEach(p => {
+  // Draw points with enhanced styling
+  points.forEach((p, idx) => {
+    // Outer circle (glow effect)
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 4.5, 0, 2 * Math.PI);
+    ctx.arc(p.x, p.y, 7, 0, 2 * Math.PI);
+    ctx.fillStyle = 'rgba(10, 68, 142, 0.1)';
+    ctx.fill();
+
+    // Inner circle
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 5, 0, 2 * Math.PI);
     ctx.fillStyle = '#0a448e';
     ctx.fill();
 
-    // Value label above point
+    // White center dot
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 2.5, 0, 2 * Math.PI);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+
+    // Value label above point with background
     ctx.font = 'bold 12px Outfit';
     ctx.fillStyle = '#1a202c';
     ctx.textAlign = 'center';
-    ctx.fillText(p.value, p.x, p.y - 12);
+    const labelY = p.y - 18;
+    
+    // Background for label
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.fillRect(p.x - 15, labelY - 10, 30, 16);
+    
+    // Label text
+    ctx.fillStyle = '#0a448e';
+    ctx.font = 'bold 11px Outfit';
+    ctx.fillText(p.value, p.x, labelY);
 
     // Month label below axis
-    ctx.font = '11px Outfit';
+    ctx.font = '10px Outfit';
     ctx.fillStyle = '#4a5568';
     const shortLabel = p.label ? p.label.substring(2) : ''; // YY-MM
     ctx.fillText(shortLabel, p.x, cssHeight - padding.bottom + 18);
@@ -750,12 +789,25 @@ async function renderAssignmentsView(container) {
     const data = await res.json();
     cacheData.assignments = data;
     
+    // Filter assignments based on user role
+    let filteredData = data;
+    let viewTitle = 'All Asset Assignments';
+    
+    if (currentUser.role === 'Employee') {
+      // Employees only see assets assigned to them
+      filteredData = data.filter(a => a.assigned_to === currentUser.id);
+      viewTitle = 'My Assigned Assets';
+    }
+    
     const assignBtnHtml = currentUser.role === 'AssetManager' ? `
       <button class="btn btn-primary" onclick="openAssignAssetModal()">Assign Asset</button>
     ` : '';
     
     container.innerHTML = `
       <div class="view-actions-bar">
+        <div>
+          <h3 style="margin: 0;">${viewTitle}</h3>
+        </div>
         <div class="filters-bar">
           <input type="text" id="assign-search" placeholder="Search by asset or user..." class="filter-input" oninput="filterAssignmentTable()">
         </div>
@@ -788,7 +840,7 @@ async function renderAssignmentsView(container) {
       </div>
     `;
     
-    renderAssignmentTableRows(data);
+    renderAssignmentTableRows(filteredData);
   } catch (err) {
     container.innerHTML = `<div class="warning-banner">${err.message}</div>`;
   }
@@ -847,18 +899,47 @@ function filterAssignmentTable() {
   renderAssignmentTableRows(filtered);
 }
 
-// Confirm receipt client callback
+// Store assignment data for receipt confirmation modal
+let pendingReceiptConfirmation = null;
+
+// Confirm receipt client callback - open modal
 async function confirmReceiptAction(assignmentId) {
-  if (!confirm('Confirm receipt of this asset? By clicking OK you certify that you have received this physical asset in good condition.')) {
+  // Find the assignment in cache
+  const assignment = cacheData.assignments.find(a => a.id === parseInt(assignmentId));
+  if (!assignment) {
+    showToast('Assignment not found', 'error');
     return;
   }
+  
+  // Store for submission
+  pendingReceiptConfirmation = assignmentId;
+  
+  // Populate modal with asset details
+  document.getElementById('receipt-asset-id').textContent = assignment.asset_id;
+  document.getElementById('receipt-asset-name').textContent = assignment.asset_name;
+  document.getElementById('receipt-asset-type').textContent = assignment.asset_type || 'N/A';
+  document.getElementById('receipt-asset-serial').textContent = assignment.serial_number || 'N/A';
+  
+  // Open modal
+  openModal('modal-confirm-receipt');
+}
+
+// Submit receipt confirmation
+async function submitConfirmReceipt() {
+  if (!pendingReceiptConfirmation) {
+    showToast('No assignment selected', 'error');
+    return;
+  }
+  
   try {
-    const res = await fetch(`/api/assignments/${assignmentId}/confirm`, {
+    const res = await fetch(`/api/assignments/${pendingReceiptConfirmation}/confirm`, {
       method: 'PUT'
     });
     const data = await res.json();
     if (res.ok) {
       showToast('Receipt confirmed successfully!', 'success');
+      closeModal('modal-confirm-receipt');
+      pendingReceiptConfirmation = null;
       renderView('assignments');
     } else {
       showToast(data.error || 'Failed to confirm receipt', 'error');
@@ -1053,18 +1134,102 @@ async function loadMaintenanceTable() {
   }
 }
 
+// Store maintenance data for completion modal
+let pendingMaintenanceCompletion = null;
+
 async function completeMaintenancePrompt(maintenanceId, assetId) {
-  const completionDate = new Date().toISOString().split('T')[0];
-  const nextStatus = prompt('Enter next status for the asset (Active or In Storage):', 'Active');
+  // Find the maintenance record
+  const res = await fetch('/api/maintenance');
+  if (!res.ok) {
+    showToast('Failed to load maintenance data', 'error');
+    return;
+  }
+  const records = await res.json();
+  const maintenance = records.find(m => m.id === parseInt(maintenanceId));
   
-  if (nextStatus === null) return; // cancel
-  if (!['Active', 'In Storage'].includes(nextStatus)) {
-    alert('Invalid status. Enter either "Active" or "In Storage".');
+  if (!maintenance) {
+    showToast('Maintenance record not found', 'error');
     return;
   }
   
+  // Store for submission
+  pendingMaintenanceCompletion = maintenanceId;
+  
+  // Populate modal
+  document.getElementById('complete-maint-asset-id').textContent = maintenance.asset_id;
+  document.getElementById('complete-maint-asset-name').textContent = maintenance.asset_name;
+  document.getElementById('complete-maint-date').value = new Date().toISOString().split('T')[0];
+  
+  // Load users for assignment dropdown
   try {
-    const res = await fetch(`/api/maintenance/${maintenanceId}/complete`, {
+    const usersRes = await fetch('/api/users');
+    if (usersRes.ok) {
+      const users = await usersRes.json();
+      const selectEl = document.getElementById('complete-maint-assign-to');
+      selectEl.innerHTML = '<option value="">Select a user...</option>';
+      users.forEach(u => {
+        if (u.status === 'Active') {
+          const option = document.createElement('option');
+          option.value = u.id;
+          option.textContent = `${u.name} (${u.department})`;
+          selectEl.appendChild(option);
+        }
+      });
+    }
+  } catch (err) {
+    console.error('Failed to load users:', err);
+  }
+  
+  // Reset radio buttons
+  document.querySelector('input[name="post-maintenance-action"][value="storage"]').checked = true;
+  document.getElementById('assign-user-section').style.display = 'none';
+  
+  // Open modal
+  openModal('modal-complete-maintenance');
+}
+
+// Handle radio button change for maintenance action
+document.addEventListener('DOMContentLoaded', () => {
+  const radios = document.querySelectorAll('input[name="post-maintenance-action"]');
+  radios.forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      const assignSection = document.getElementById('assign-user-section');
+      if (e.target.value === 'assign') {
+        assignSection.style.display = 'block';
+      } else {
+        assignSection.style.display = 'none';
+      }
+    });
+  });
+});
+
+// Submit complete maintenance
+async function submitCompleteMaintenance() {
+  if (!pendingMaintenanceCompletion) {
+    showToast('No maintenance record selected', 'error');
+    return;
+  }
+  
+  const completionDate = document.getElementById('complete-maint-date').value;
+  if (!completionDate) {
+    showToast('Please select a completion date', 'error');
+    return;
+  }
+  
+  const action = document.querySelector('input[name="post-maintenance-action"]:checked').value;
+  let nextStatus = 'In Storage';
+  
+  if (action === 'assign') {
+    const assignToId = document.getElementById('complete-maint-assign-to').value;
+    if (!assignToId) {
+      showToast('Please select a user to assign the asset to', 'error');
+      return;
+    }
+    nextStatus = 'Active'; // Asset will be assigned, so mark as Active
+  }
+  
+  try {
+    const res = await fetch(`/api/maintenance/${pendingMaintenanceCompletion}/complete`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ completionDate, nextStatus })
@@ -1072,6 +1237,8 @@ async function completeMaintenancePrompt(maintenanceId, assetId) {
     const data = await res.json();
     if (res.ok) {
       showToast('Maintenance marked as completed!', 'success');
+      closeModal('modal-complete-maintenance');
+      pendingMaintenanceCompletion = null;
       renderView('maintenance');
     } else {
       showToast(data.error || 'Failed to close ticket', 'error');

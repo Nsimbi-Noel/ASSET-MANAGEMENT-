@@ -511,6 +511,88 @@
     </form>
   </div>
 
+  <!-- Modal: Confirm Asset Receipt -->
+  <div class="modal" id="modal-confirm-receipt" style="display: none;">
+    <div class="modal-header">
+      <h3>Confirm Asset Receipt</h3>
+      <button class="modal-close" onclick="closeModal('modal-confirm-receipt')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="background: #f0f9ff; border-left: 4px solid #0a448e; padding: 1rem; margin-bottom: 1rem; border-radius: 4px;">
+        <p style="margin: 0; color: #1a202c;"><strong>Asset Details:</strong></p>
+        <div style="margin-top: 0.5rem;">
+          <p style="margin: 0.25rem 0;"><strong>Asset ID:</strong> <span id="receipt-asset-id"></span></p>
+          <p style="margin: 0.25rem 0;"><strong>Asset Name:</strong> <span id="receipt-asset-name"></span></p>
+          <p style="margin: 0.25rem 0;"><strong>Type:</strong> <span id="receipt-asset-type"></span></p>
+          <p style="margin: 0.25rem 0;"><strong>Serial Number:</strong> <span id="receipt-asset-serial"></span></p>
+        </div>
+      </div>
+      <p style="color: #4a5568; margin: 1rem 0;">By confirming receipt, you certify that you have physically received this asset in good condition and accept responsibility for its safekeeping.</p>
+      <div style="background: #fffaf0; border-left: 4px solid #ed8936; padding: 0.75rem; border-radius: 4px;">
+        <p style="margin: 0; color: #7c2d12; font-size: 0.9rem;"><strong>Important:</strong> Please verify the asset condition before confirming receipt.</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline" onclick="closeModal('modal-confirm-receipt')">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="submitConfirmReceipt()">Confirm Receipt</button>
+    </div>
+  </div>
+
+  <!-- Modal: Complete Maintenance -->
+  <div class="modal" id="modal-complete-maintenance" style="display: none;">
+    <div class="modal-header">
+      <h3>Complete Maintenance</h3>
+      <button class="modal-close" onclick="closeModal('modal-complete-maintenance')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="background: #f0f9ff; border-left: 4px solid #0a448e; padding: 1rem; margin-bottom: 1.5rem; border-radius: 4px;">
+        <p style="margin: 0; color: #1a202c;"><strong>Asset Information:</strong></p>
+        <div style="margin-top: 0.5rem;">
+          <p style="margin: 0.25rem 0;"><strong>Asset ID:</strong> <span id="complete-maint-asset-id"></span></p>
+          <p style="margin: 0.25rem 0;"><strong>Asset Name:</strong> <span id="complete-maint-asset-name"></span></p>
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label for="complete-maint-date">Completion Date*</label>
+        <input type="date" id="complete-maint-date" required>
+      </div>
+      
+      <div style="background: #fffaf0; border-left: 4px solid #ed8936; padding: 1rem; margin-bottom: 1.5rem; border-radius: 4px;">
+        <p style="margin: 0 0 1rem 0; color: #7c2d12; font-weight: 600;">What should happen to this asset after maintenance?</p>
+        
+        <div style="display: flex; gap: 1rem;">
+          <label style="flex: 1; cursor: pointer;">
+            <input type="radio" name="post-maintenance-action" value="storage" checked style="margin-right: 0.5rem;">
+            <span style="font-weight: 500;">Send to Storage</span>
+            <p style="margin: 0.25rem 0 0 1.5rem; font-size: 0.85rem; color: #5a6c7d;">Asset will be marked as 'In Storage'</p>
+          </label>
+        </div>
+        
+        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+          <label style="flex: 1; cursor: pointer;">
+            <input type="radio" name="post-maintenance-action" value="assign" style="margin-right: 0.5rem;">
+            <span style="font-weight: 500;">Assign to Someone</span>
+            <p style="margin: 0.25rem 0 0 1.5rem; font-size: 0.85rem; color: #5a6c7d;">Asset will be assigned to a user</p>
+          </label>
+        </div>
+      </div>
+      
+      <div id="assign-user-section" style="display: none;">
+        <div class="form-group">
+          <label for="complete-maint-assign-to">Assign To (Custodian)*</label>
+          <select id="complete-maint-assign-to">
+            <option value="">Select a user...</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline" onclick="closeModal('modal-complete-maintenance')">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="submitCompleteMaintenance()">Complete Maintenance</button>
+    </div>
+  </div>
+
   <!-- Modal: Record Maintenance -->
   <div class="modal" id="modal-record-maintenance" style="display: none;">
     <div class="modal-header">
