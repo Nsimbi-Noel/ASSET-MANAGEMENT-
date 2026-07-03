@@ -1490,6 +1490,18 @@ async function completeMaintenancePrompt(maintenanceId, assetId) {
   openModal('modal-complete-maintenance');
 }
 
+// Handle radio button change for maintenance action
+document.addEventListener('change', (e) => {
+  if (e.target.name === 'post-maintenance-action') {
+    const assignSection = document.getElementById('assign-user-section');
+    if (e.target.value === 'assign') {
+      assignSection.style.display = 'block';
+    } else {
+      assignSection.style.display = 'none';
+    }
+  }
+});
+
 // Submit complete maintenance
 async function submitCompleteMaintenance() {
   if (!pendingMaintenanceCompletion) {
