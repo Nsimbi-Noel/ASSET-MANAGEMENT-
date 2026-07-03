@@ -568,7 +568,7 @@ function recordMaintenance(reqUser, { assetId, serviceProvider, description, cos
   }
 }
 
-function completeMaintenance(reqUser, maintenanceId, { completionDate, nextStatus }) {
+function completeMaintenance(reqUser, maintenanceId, { completionDate, nextStatus, assignToId }) {
   if (reqUser.role !== 'AssetManager') throw new Error('Unauthorized');
   if (!completionDate) throw new Error('Completion date is required');
   
@@ -597,7 +597,7 @@ function completeMaintenance(reqUser, maintenanceId, { completionDate, nextStatu
     logAudit(reqUser.id, reqUser.username, 'UPDATE', 'maintenance', String(maintenanceId), `Completed maintenance on asset ${maint.asset_id}. Set status to ${assetStatus}`);
     
     db.exec('COMMIT');
-    return { success: true };
+    return { success: true, assetId: maint.asset_id };
   } catch (err) {
     db.exec('ROLLBACK');
     throw err;

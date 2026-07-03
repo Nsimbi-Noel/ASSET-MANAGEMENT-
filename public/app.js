@@ -217,6 +217,7 @@ function navigateTo(view) {
   const titleMap = {
     dashboard: 'Dashboard Overview',
     register: 'Asset Register',
+    'my-assets': 'My Assigned Assets',
     assignments: 'Asset Assignments',
     transfers: 'Asset Custodian Transfers',
     maintenance: 'Asset Maintenance Logs',
@@ -245,6 +246,9 @@ function renderView(view) {
       break;
     case 'register':
       renderRegisterView(container);
+      break;
+    case 'my-assets':
+      renderMyAssetsView(container);
       break;
     case 'assignments':
       renderAssignmentsView(container);
@@ -442,33 +446,48 @@ function renderTrendChart(canvasId, trend) {
   const maxVal = Math.max(...values, 1);
   const minVal = 0;
 
-  // Draw subtle background
-  ctx.fillStyle = 'rgba(248, 250, 252, 0.5)';
+  // Draw enhanced background with subtle gradient
+  const bgGradient = ctx.createLinearGradient(0, padding.top, 0, cssHeight - padding.bottom);
+  bgGradient.addColorStop(0, 'rgba(248, 250, 252, 0.8)');
+  bgGradient.addColorStop(1, 'rgba(240, 245, 250, 0.3)');
+  ctx.fillStyle = bgGradient;
   ctx.fillRect(padding.left, padding.top, chartWidth, chartHeight);
 
-  // Axes with enhanced styling
-  ctx.strokeStyle = '#cbd5e0';
-  ctx.lineWidth = 2;
+  // Axes with enhanced styling and gradient
+  const axisGradient = ctx.createLinearGradient(0, padding.top, 0, cssHeight - padding.bottom);
+  axisGradient.addColorStop(0, '#a0aec0');
+  axisGradient.addColorStop(1, '#cbd5e0');
+  ctx.strokeStyle = axisGradient;
+  ctx.lineWidth = 2.5;
   ctx.beginPath();
   ctx.moveTo(padding.left, padding.top);
   ctx.lineTo(padding.left, cssHeight - padding.bottom);
   ctx.lineTo(cssWidth - padding.right, cssHeight - padding.bottom);
   ctx.stroke();
 
-  // Gridlines + Y labels
+  // Gridlines + Y labels with enhanced styling
   const ySteps = 4;
   ctx.font = 'bold 11px Outfit';
   ctx.fillStyle = '#718096';
   for (let s = 0; s <= ySteps; s++) {
     const val = Math.round((maxVal / ySteps) * s);
     const y = cssHeight - padding.bottom - (val / maxVal) * chartHeight;
-    ctx.strokeStyle = '#e2e8f0';
+    
+    // Alternating gridline opacity for better readability
+    ctx.strokeStyle = s % 2 === 0 ? '#e2e8f0' : '#f0f4f8';
     ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
     ctx.beginPath();
     ctx.moveTo(padding.left, y);
     ctx.lineTo(cssWidth - padding.right, y);
     ctx.stroke();
-    ctx.fillText(val, 10, y + 4);
+    ctx.setLineDash([]);
+    
+    // Y-axis label with background
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.fillRect(2, y - 8, 30, 14);
+    ctx.fillStyle = '#4a5568';
+    ctx.fillText(val, 8, y + 3);
   }
 
   // Compute point coordinates
@@ -479,9 +498,10 @@ function renderTrendChart(canvasId, trend) {
     return { x, y, label: t.month, value: t.count };
   });
 
-  // Create gradient for area fill
+  // Create enhanced gradient for area fill
   const gradient = ctx.createLinearGradient(0, padding.top, 0, cssHeight - padding.bottom);
-  gradient.addColorStop(0, 'rgba(10, 68, 142, 0.25)');
+  gradient.addColorStop(0, 'rgba(45, 122, 196, 0.35)');
+  gradient.addColorStop(0.5, 'rgba(30, 91, 168, 0.15)');
   gradient.addColorStop(1, 'rgba(10, 68, 142, 0.02)');
 
   // Fill area under line with gradient
@@ -493,63 +513,87 @@ function renderTrendChart(canvasId, trend) {
   ctx.fillStyle = gradient;
   ctx.fill();
 
-  // Draw line with shadow effect
-  ctx.shadowColor = 'rgba(10, 68, 142, 0.15)';
-  ctx.shadowBlur = 4;
+  // Draw line with enhanced shadow effect
+  ctx.shadowColor = 'rgba(10, 68, 142, 0.25)';
+  ctx.shadowBlur = 8;
   ctx.shadowOffsetX = 0;
-  ctx.shadowOffsetY = 2;
+  ctx.shadowOffsetY = 3;
+  
+  // Create gradient for line color
+  const lineGradient = ctx.createLinearGradient(points[0].x, 0, points[points.length - 1].x, 0);
+  lineGradient.addColorStop(0, '#0a448e');
+  lineGradient.addColorStop(0.5, '#1e5ba8');
+  lineGradient.addColorStop(1, '#2d7ac4');
+  
   ctx.beginPath();
   points.forEach((p, i) => {
     if (i === 0) ctx.moveTo(p.x, p.y);
     else ctx.lineTo(p.x, p.y);
   });
-  ctx.strokeStyle = '#0a448e';
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = lineGradient;
+  ctx.lineWidth = 4;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.stroke();
   ctx.shadowColor = 'transparent';
 
-  // Draw points with enhanced styling
+  // Draw points with enhanced styling and glow effects
   points.forEach((p, idx) => {
-    // Outer circle (glow effect)
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 7, 0, 2 * Math.PI);
-    ctx.fillStyle = 'rgba(10, 68, 142, 0.1)';
-    ctx.fill();
+    // Enhanced outer glow (multiple layers)
+    for (let i = 3; i > 0; i--) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 7 + i, 0, 2 * Math.PI);
+      ctx.fillStyle = `rgba(10, 68, 142, ${0.08 / i})`;
+      ctx.fill();
+    }
 
-    // Inner circle
+    // Inner circle with gradient
+    const pointGradient = ctx.createRadialGradient(p.x - 2, p.y - 2, 0, p.x, p.y, 5);
+    pointGradient.addColorStop(0, '#2d7ac4');
+    pointGradient.addColorStop(1, '#0a448e');
     ctx.beginPath();
     ctx.arc(p.x, p.y, 5, 0, 2 * Math.PI);
-    ctx.fillStyle = '#0a448e';
+    ctx.fillStyle = pointGradient;
     ctx.fill();
 
-    // White center dot
+    // White center dot with shadow
+    ctx.shadowColor = 'rgba(10, 68, 142, 0.3)';
+    ctx.shadowBlur = 3;
     ctx.beginPath();
     ctx.arc(p.x, p.y, 2.5, 0, 2 * Math.PI);
     ctx.fillStyle = '#ffffff';
     ctx.fill();
+    ctx.shadowColor = 'transparent';
 
-    // Value label above point with background
+    // Value label above point with enhanced background
     ctx.font = 'bold 12px Outfit';
     ctx.fillStyle = '#1a202c';
     ctx.textAlign = 'center';
-    const labelY = p.y - 18;
+    const labelY = p.y - 20;
     
-    // Background for label
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-    ctx.fillRect(p.x - 15, labelY - 10, 30, 16);
+    // Background for label with shadow
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.1)';
+    ctx.shadowBlur = 3;
+    ctx.shadowOffsetY = 1;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
+    ctx.fillRect(p.x - 18, labelY - 11, 36, 18);
+    ctx.shadowColor = 'transparent';
+    
+    // Border for label
+    ctx.strokeStyle = 'rgba(10, 68, 142, 0.15)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(p.x - 18, labelY - 11, 36, 18);
     
     // Label text
     ctx.fillStyle = '#0a448e';
     ctx.font = 'bold 11px Outfit';
-    ctx.fillText(p.value, p.x, labelY);
+    ctx.fillText(p.value, p.x, labelY + 3);
 
-    // Month label below axis
+    // Month label below axis with improved styling
     ctx.font = '10px Outfit';
     ctx.fillStyle = '#4a5568';
     const shortLabel = p.label ? p.label.substring(2) : ''; // YY-MM
-    ctx.fillText(shortLabel, p.x, cssHeight - padding.bottom + 18);
+    ctx.fillText(shortLabel, p.x, cssHeight - padding.bottom + 20);
   });
   ctx.textAlign = 'left';
 }
@@ -781,6 +825,115 @@ function exportAssetRegisterCSV() {
   document.body.removeChild(link);
 }
 
+// ================= VIEW: MY ASSETS (Employee Dashboard) =================
+async function renderMyAssetsView(container) {
+  try {
+    const res = await fetch('/api/assignments');
+    if (!res.ok) throw new Error('Failed to load your assets');
+    const allAssignments = await res.json();
+    
+    // Filter to only show assets assigned to current employee
+    const myAssets = allAssignments.filter(a => a.assigned_to === currentUser.id && a.status === 'Active');
+    
+    // Calculate stats
+    const totalAssets = myAssets.length;
+    const confirmedAssets = myAssets.filter(a => a.confirmed_receipt === 1).length;
+    const pendingConfirmation = myAssets.filter(a => a.confirmed_receipt === 0).length;
+    
+    container.innerHTML = `
+      <!-- Employee Assets Summary Cards -->
+      <div class="grid grid-3" style="margin-bottom: 2rem;">
+        <div class="metric-card card-total">
+          <div class="metric-info">
+            <span class="metric-title">Total Assets Assigned</span>
+            <span class="metric-value">${totalAssets}</span>
+          </div>
+          <div class="metric-icon-box">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9m3 14H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8"/></svg>
+          </div>
+        </div>
+        <div class="metric-card card-active">
+          <div class="metric-info">
+            <span class="metric-title">Receipt Confirmed</span>
+            <span class="metric-value">${confirmedAssets}</span>
+          </div>
+          <div class="metric-icon-box">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          </div>
+        </div>
+        <div class="metric-card card-storage">
+          <div class="metric-info">
+            <span class="metric-title">Pending Confirmation</span>
+            <span class="metric-value">${pendingConfirmation}</span>
+          </div>
+          <div class="metric-icon-box">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+        </div>
+      </div>
+      
+      <!-- My Assets Table -->
+      <div class="table-card">
+        <h3>My Assigned Assets</h3>
+        <div class="table-responsive">
+          <table id="my-assets-table">
+            <thead>
+              <tr>
+                <th>Asset ID</th>
+                <th>Asset Name</th>
+                <th>Type</th>
+                <th>Serial Number</th>
+                <th>Assigned Date</th>
+                <th>Purpose</th>
+                <th>Receipt Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="my-assets-tbody">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    
+    renderMyAssetsTableRows(myAssets);
+  } catch (err) {
+    container.innerHTML = `<div class="warning-banner">${err.message}</div>`;
+  }
+}
+
+function renderMyAssetsTableRows(assets) {
+  const tbody = document.getElementById('my-assets-tbody');
+  if (assets.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="table-empty">You don't have any assigned assets yet.</td></tr>`;
+    return;
+  }
+  
+  tbody.innerHTML = assets.map(a => {
+    const receiptLabel = a.confirmed_receipt === 1 
+      ? '<span class="status-badge active">✓ Confirmed</span>' 
+      : '<span class="status-badge pending">⏱ Pending</span>';
+    
+    const actionBtn = a.confirmed_receipt === 0 
+      ? `<button class="btn btn-secondary btn-sm" onclick="confirmReceiptAction('${a.id}')">Confirm Receipt</button>`
+      : '<span class="text-secondary">-</span>';
+    
+    return `
+      <tr>
+        <td><strong>${a.asset_id}</strong></td>
+        <td>${a.asset_name}</td>
+        <td>${a.asset_type}</td>
+        <td>${a.serial_number}</td>
+        <td>${a.assignment_date}</td>
+        <td>${a.purpose || '-'}</td>
+        <td>${receiptLabel}</td>
+        <td>${actionBtn}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
 // ================= VIEW: ASSIGNMENTS =================
 async function renderAssignmentsView(container) {
   try {
@@ -940,7 +1093,11 @@ async function submitConfirmReceipt() {
       showToast('Receipt confirmed successfully!', 'success');
       closeModal('modal-confirm-receipt');
       pendingReceiptConfirmation = null;
-      renderView('assignments');
+      if (activeView === 'my-assets') {
+        renderView('my-assets');
+      } else {
+        renderView('assignments');
+      }
     } else {
       showToast(data.error || 'Failed to confirm receipt', 'error');
     }
@@ -1218,25 +1375,52 @@ async function submitCompleteMaintenance() {
   
   const action = document.querySelector('input[name="post-maintenance-action"]:checked').value;
   let nextStatus = 'In Storage';
+  let assignToId = null;
   
   if (action === 'assign') {
-    const assignToId = document.getElementById('complete-maint-assign-to').value;
+    assignToId = document.getElementById('complete-maint-assign-to').value;
     if (!assignToId) {
       showToast('Please select a user to assign the asset to', 'error');
       return;
     }
-    nextStatus = 'Active'; // Asset will be assigned, so mark as Active
+    nextStatus = 'Active';
   }
   
   try {
     const res = await fetch(`/api/maintenance/${pendingMaintenanceCompletion}/complete`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ completionDate, nextStatus })
+      body: JSON.stringify({ completionDate, nextStatus, assignToId })
     });
     const data = await res.json();
     if (res.ok) {
       showToast('Maintenance marked as completed!', 'success');
+      
+      // If assign action was selected, create the assignment
+      if (action === 'assign' && assignToId && data.assetId) {
+        try {
+          const assignRes = await fetch('/api/assignments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              assetId: data.assetId,
+              assignedTo: parseInt(assignToId),
+              assignmentDate: new Date().toISOString().split('T')[0],
+              purpose: 'Post-maintenance assignment',
+              notes: `Assigned after maintenance completion on ${completionDate}`
+            })
+          });
+          if (assignRes.ok) {
+            showToast('Asset assigned successfully after maintenance!', 'success');
+          } else {
+            const assignError = await assignRes.json();
+            showToast('Maintenance completed but assignment failed: ' + (assignError.error || 'Unknown error'), 'warning');
+          }
+        } catch (assignErr) {
+          showToast('Maintenance completed but assignment failed: Network error', 'warning');
+        }
+      }
+      
       closeModal('modal-complete-maintenance');
       pendingMaintenanceCompletion = null;
       renderView('maintenance');
