@@ -323,18 +323,34 @@ function bulkRegisterAssets(reqUser, { assets }) {
 
 // --- Asset Assignment & Transfers (Asset Manager & Custodians) ---
 
-function listAssignments() {
-  const query = db.prepare(`
-    SELECT a.*, ast.name as asset_name, ast.serial_number, ast.type as asset_type,
-           u1.name as assigned_to_name, u1.department as assigned_to_department,
-           u2.name as assigned_by_name
-    FROM assignments a
-    JOIN assets ast ON a.asset_id = ast.id
-    JOIN users u1 ON a.assigned_to = u1.id
-    JOIN users u2 ON a.assigned_by = u2.id
-    ORDER BY a.assignment_date DESC
-  `);
-  return query.all();
+function listAssignments(reqUser) {
+  let query;
+  if (reqUser.role === 'Admin' || reqUser.role === 'AssetManager' || reqUser.role === 'AssetCustodian') {
+    query = db.prepare(`
+      SELECT a.*, ast.name as asset_name, ast.serial_number, ast.type as asset_type,
+             u1.name as assigned_to_name, u1.department as assigned_to_department,
+             u2.name as assigned_by_name
+      FROM assignments a
+      JOIN assets ast ON a.asset_id = ast.id
+      JOIN users u1 ON a.assigned_to = u1.id
+      JOIN users u2 ON a.assigned_by = u2.id
+      ORDER BY a.assignment_date DESC
+    `);
+    return query.all();
+  } else {
+    query = db.prepare(`
+      SELECT a.*, ast.name as asset_name, ast.serial_number, ast.type as asset_type,
+             u1.name as assigned_to_name, u1.department as assigned_to_department,
+             u2.name as assigned_by_name
+      FROM assignments a
+      JOIN assets ast ON a.asset_id = ast.id
+      JOIN users u1 ON a.assigned_to = u1.id
+      JOIN users u2 ON a.assigned_by = u2.id
+      WHERE a.assigned_to = ?
+      ORDER BY a.assignment_date DESC
+    `);
+    return query.all(reqUser.id);
+  }
 }
 
 function assignAsset(reqUser, { assetId, assignedTo, assignmentDate, purpose, notes }) {
@@ -738,6 +754,27 @@ function revokeRequest(reqUser, requestId, { managerNotes }) {
   update.run(note, reqUser.id, requestId);
 
   logAudit(reqUser.id, reqUser.username, 'UPDATE', 'requests', String(requestId), `Revoked previously approved asset request id ${requestId}. Notes: ${managerNotes || ''}`);
+  return { success: true };
+}
+
+function updateRequestFollowUp(reqUser, requestId, { feedback, receivedStatus }) {
+  const query = db.prepare('SELECT * FROM requests WHERE id = ?');
+  const req = query.get(requestId);
+  if (!req) throw new Error('Request not found');
+
+  // Authorization: Only the requester can update follow-up
+  if (reqUser.id !== req.requested_by) {
+    throw new Error('Unauthorized. Only the original requester can update follow-up information.');
+  }
+
+  const update = db.prepare(`
+    UPDATE requests 
+    SET requester_feedback = ?, received_status = ?
+    WHERE id = ?
+  `);
+  update.run(feedback || req.requester_feedback, receivedStatus || req.received_status, requestId);
+
+  logAudit(reqUser.id, reqUser.username, 'UPDATE', 'requests', String(requestId), `Updated follow-up for request ${requestId}. Received Status: ${receivedStatus}`);
   return { success: true };
 }
 

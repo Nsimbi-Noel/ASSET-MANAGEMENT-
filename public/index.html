@@ -89,7 +89,7 @@
             <svg class="nav-icon" viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
             <span>Asset Register</span>
           </a></li>
-          <li data-role="Employee"><a href="#" class="nav-link" data-view="my-assets" data-label="My Assets">
+          <li data-role="All"><a href="#" class="nav-link" data-view="my-assets" data-label="My Assets">
             <svg class="nav-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
             <span>My Assets</span>
           </a></li>
@@ -580,6 +580,14 @@
             <p style="margin: 0.25rem 0 0 1.5rem; font-size: 0.85rem; color: #5a6c7d;">Asset will be assigned to a user</p>
           </label>
         </div>
+        
+        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+          <label style="flex: 1; cursor: pointer;">
+            <input type="radio" name="post-maintenance-action" value="dispose" style="margin-right: 0.5rem;">
+            <span style="font-weight: 500; color: #c53030;">Dispose Asset</span>
+            <p style="margin: 0.25rem 0 0 1.5rem; font-size: 0.85rem; color: #5a6c7d;">Asset is too damaged and should be retired</p>
+          </label>
+        </div>
       </div>
       
       <div id="assign-user-section" style="display: none;">
@@ -681,6 +689,34 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-outline" onclick="closeModal('modal-dispose-asset')">Cancel</button>
         <button type="submit" class="btn btn-danger">Confirm & Commit Disposal</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Modal: Request Follow-Up -->
+  <div class="modal" id="modal-request-followup" style="display: none;">
+    <div class="modal-header">
+      <h3>Update Request Status</h3>
+      <button class="modal-close" onclick="closeModal('modal-request-followup')">&times;</button>
+    </div>
+    <form id="request-followup-form">
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="followup-received-status">Have you received this asset?*</label>
+          <select id="followup-received-status" required>
+            <option value="Pending">Still Pending</option>
+            <option value="Received">Yes, Received</option>
+            <option value="Not Received">No, Not Received</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="followup-feedback">Feedback / Inquiry*</label>
+          <textarea id="followup-feedback" required placeholder="Confirm receipt details or inquire why a request was denied..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-request-followup')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Update Status</button>
       </div>
     </form>
   </div>

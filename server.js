@@ -214,7 +214,7 @@ const server = http.createServer(async (req, res) => {
 
       // 3. Assignments (Managers)
       if (pathname === '/api/assignments' && method === 'GET') {
-        return sendJSON(res, controller.listAssignments());
+        return sendJSON(res, controller.listAssignments(user));
       }
       if (pathname === '/api/assignments' && method === 'POST') {
         const body = await parseBody(req);
@@ -286,6 +286,13 @@ const server = http.createServer(async (req, res) => {
         const requestId = requestRevokeMatch[1];
         const body = await parseBody(req);
         return sendJSON(res, controller.revokeRequest(user, requestId, body));
+      }
+
+      const requestFollowUpMatch = pathname.match(/^\/api\/requests\/(\d+)\/followup$/);
+      if (requestFollowUpMatch && method === 'PUT') {
+        const requestId = requestFollowUpMatch[1];
+        const body = await parseBody(req);
+        return sendJSON(res, controller.updateRequestFollowUp(user, requestId, body));
       }
 
       // 8. Reports & Dashboards

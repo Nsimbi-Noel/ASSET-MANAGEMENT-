@@ -119,6 +119,8 @@ function initDb() {
       manager_notes TEXT,
       actioned_by INTEGER REFERENCES users(id),
       actioned_date TEXT,
+      requester_feedback TEXT,
+      received_status TEXT DEFAULT 'Pending', -- Pending, Received, Not Received
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);

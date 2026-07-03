@@ -150,6 +150,7 @@ function setupEventListeners() {
   document.getElementById('maintenance-asset-form').addEventListener('submit', submitMaintenanceEvent);
   document.getElementById('dispose-asset-form').addEventListener('submit', submitDisposal);
   document.getElementById('create-request-form').addEventListener('submit', submitRequisition);
+  document.getElementById('request-followup-form').addEventListener('submit', submitRequestFollowUp);
   document.getElementById('user-form').addEventListener('submit', submitUserForm);
   document.getElementById('change-password-form').addEventListener('submit', submitResetPassword);
   document.getElementById('change-own-password-form').addEventListener('submit', submitChangeOwnPassword);
@@ -825,14 +826,14 @@ function exportAssetRegisterCSV() {
   document.body.removeChild(link);
 }
 
-// ================= VIEW: MY ASSETS (Employee Dashboard) =================
+// ================= VIEW: MY ASSETS (Personal Dashboard) =================
 async function renderMyAssetsView(container) {
   try {
     const res = await fetch('/api/assignments');
     if (!res.ok) throw new Error('Failed to load your assets');
     const allAssignments = await res.json();
     
-    // Filter to only show assets assigned to current employee
+    // Filter to only show assets assigned to current user
     const myAssets = allAssignments.filter(a => a.assigned_to === currentUser.id && a.status === 'Active');
     
     // Calculate stats
@@ -1384,6 +1385,8 @@ async function submitCompleteMaintenance() {
       return;
     }
     nextStatus = 'Active';
+  } else if (action === 'dispose') {
+    nextStatus = 'Disposed';
   }
   
   try {
@@ -1418,6 +1421,23 @@ async function submitCompleteMaintenance() {
           }
         } catch (assignErr) {
           showToast('Maintenance completed but assignment failed: Network error', 'warning');
+        }
+      } else if (action === 'dispose' && data.assetId) {
+        // If dispose action was selected, also record it in the disposals archive
+        try {
+          await fetch('/api/disposals', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              assetId: data.assetId,
+              disposalDate: completionDate,
+              method: 'Scrapped',
+              reason: 'Too foregone/damaged beyond repair after maintenance'
+            })
+          });
+          showToast('Asset marked as disposed in archive.', 'success');
+        } catch (err) {
+          console.error('Failed to record disposal archive:', err);
         }
       }
       
@@ -1548,6 +1568,8 @@ async function renderRequestsView(container) {
                 <th>Submitted Date</th>
                 <th>Status</th>
                 <th>Manager Feedback</th>
+                <th>Receipt Status</th>
+                <th>My Feedback</th>
                 <th>Action</th>
               </tr>
             </thead>
@@ -1585,6 +1607,10 @@ function renderRequestTableRows(requests) {
       actionBtn = `
         <button class="btn btn-outline btn-sm" onclick="revokeRequestAction('${r.id}')">Revoke</button>
       `;
+    } else if (r.requested_by === currentUser.id) {
+      actionBtn = `
+        <button class="btn btn-outline btn-sm" onclick="openRequestFollowUpModal('${r.id}')">Update Status</button>
+      `;
     } else {
       actionBtn = '<span class="text-secondary">-</span>';
     }
@@ -1599,6 +1625,8 @@ function renderRequestTableRows(requests) {
         <td>${new Date(r.created_at).toLocaleDateString()}</td>
         <td><span class="status-badge ${r.status.toLowerCase()}">${r.status}</span></td>
         <td>${r.manager_notes || '<span class="text-secondary">-</span>'}</td>
+        <td><span class="status-badge ${r.received_status ? r.received_status.toLowerCase().replace(' ', '-') : 'pending'}">${r.received_status || 'Pending'}</span></td>
+        <td>${r.requester_feedback || '<span class="text-secondary">-</span>'}</td>
         <td>${actionBtn}</td>
       </tr>
     `;
@@ -2449,11 +2477,50 @@ async function submitRequisition(e) {
     });
     const data = await res.json();
     if (res.ok) {
-      showToast('Requisition request submitted successfully!', 'success');
+      showToast('Requisition submitted for review!', 'success');
       closeModal('modal-create-request');
       renderView('requests');
     } else {
-      showToast(data.error || 'Failed to submit requisition', 'error');
+      showToast(data.error || 'Failed to submit request', 'error');
+    }
+  } catch (err) {
+    showToast('Network error.', 'error');
+  }
+}
+
+let pendingRequestFollowUp = null;
+
+function openRequestFollowUpModal(requestId) {
+  const req = cacheData.requests.find(r => r.id === parseInt(requestId));
+  if (!req) return;
+  
+  pendingRequestFollowUp = requestId;
+  document.getElementById('followup-received-status').value = req.received_status || 'Pending';
+  document.getElementById('followup-feedback').value = req.requester_feedback || '';
+  
+  openModal('modal-request-followup');
+}
+
+async function submitRequestFollowUp(e) {
+  e.preventDefault();
+  const payload = {
+    receivedStatus: document.getElementById('followup-received-status').value,
+    feedback: document.getElementById('followup-feedback').value
+  };
+  
+  try {
+    const res = await fetch(`/api/requests/${pendingRequestFollowUp}/followup`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      showToast('Status updated successfully!', 'success');
+      closeModal('modal-request-followup');
+      renderView('requests');
+    } else {
+      const data = await res.json();
+      showToast(data.error || 'Failed to update status', 'error');
     }
   } catch (err) {
     showToast('Network error.', 'error');
