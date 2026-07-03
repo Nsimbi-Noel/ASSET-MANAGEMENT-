@@ -19,6 +19,14 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 
 // --- Simple In-Memory Rate Limiter ---
 const rateLimitStore = new Map();
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of rateLimitStore.entries()) {
+        if (now > entry.resetAt){
+            rateLimitStore.delete(key);
+        }
+    }
+}, 5 * 60 * 1000);
 function rateLimit(key, maxAttempts, windowMs) {
   const now = Date.now();
   if (!rateLimitStore.has(key)) {
@@ -62,10 +70,18 @@ function sendError(res, message, status = 400) {
 }
 
 // Helper: parse request body
+const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10 MB limit
 function parseBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
+    let size = 0;
     req.on('data', chunk => {
+        size += chunk.length;
+        if(size > MAX_BODY_SIZE){
+            reject(new Error('Request body too large'));
+            req.destroy();
+            return;
+        }
       body += chunk.toString();
     });
     req.on('end', () => {
@@ -92,7 +108,6 @@ function authenticate(req) {
   if (!sessionId && req.headers.cookie) {
     const cookies = req.headers.cookie.split(';').reduce((acc, c) => {
       const parts = c.trim().split('=');
-      acc[parts[0]] = parts[1];
       return acc;
     }, {});
     sessionId = cookies['session'];
@@ -281,11 +296,22 @@ const server = http.createServer(async (req, res) => {
         return sendJSON(res, controller.actionRequest(user, requestId, body));
       }
 
+      const requestRevokeMatch = pathname.match(/^\/api\/requests\/(\d+)\/revoke$/);
+      if (requestRevokeMatch && method === 'PUT') {
+        const requestId = requestRevokeMatch[1];
+        const body = await parseBody(req);
+        return sendJSON(res, controller.revokeRequest(user, requestId, body));
+      }
+
       // 8. Reports & Dashboards
       if (pathname === '/api/reports/dashboard' && method === 'GET') {
         return sendJSON(res, controller.getDashboardMetrics());
       }
       if (pathname === '/api/reports/register' && method === 'GET') {
+        // Employees are not permitted to access the asset register
+        if (user.role === 'Employee') {
+          return sendError(res, 'Access denied. Employees are not authorised to view the asset register.', 403);
+        }
         // Parse filters
         const filters = {
           status: parsedUrl.query.status,
