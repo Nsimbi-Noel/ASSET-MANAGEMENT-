@@ -1221,10 +1221,27 @@ async function renderMaintenanceView(container) {
     
     container.innerHTML = `
       <div class="view-actions-bar">
-        <h3>Active Service Tickets</h3>
+        <h3>Maintenance Management Dashboard</h3>
         <div>
           ${addMaintHtml}
         </div>
+      </div>
+      
+      <!-- Maintenance Status Summary Cards -->
+      <div class="grid grid-4" id="maintenance-summary" style="margin-bottom: 2rem;">
+        <!-- Populated dynamically -->
+      </div>
+      
+      <!-- Maintenance Progress Filters -->
+      <div class="filters-bar" style="margin-bottom: 1.5rem;">
+        <select id="maint-filter-status" class="filter-select" onchange="filterMaintenanceTable()">
+          <option value="">All Statuses</option>
+          <option value="Overdue">Overdue</option>
+          <option value="In Progress">In Progress</option>
+          <option value="Scheduled">Scheduled</option>
+          <option value="Completed">Completed</option>
+        </select>
+        <input type="text" id="maint-search" placeholder="Search by asset name or provider..." class="filter-input" oninput="filterMaintenanceTable()">
       </div>
       
       <div class="table-card">
@@ -1238,8 +1255,8 @@ async function renderMaintenanceView(container) {
                 <th>Cost (UGX)</th>
                 <th>Service Date</th>
                 <th>Next Service Due</th>
-                <th>Status</th>
-                <th>Action</th>
+                <th>Progress</th>
+                <th>Next Action</th>
               </tr>
             </thead>
             <tbody id="maintenance-tbody">
@@ -1264,32 +1281,159 @@ async function loadMaintenanceTable() {
     if (!res.ok) throw new Error('Failed to load maintenance records');
     const records = await res.json();
     
+    cacheData.maintenance = records;
+    
+    // Render summary cards
+    renderMaintenanceSummary(records);
+    
     if (records.length === 0) {
       tbody.innerHTML = `<tr><td colspan="8" class="table-empty">No maintenance events recorded.</td></tr>`;
       return;
     }
     
-    tbody.innerHTML = records.map(m => {
-      const actionBtn = currentUser.role === 'AssetManager' && m.completed === 0
-        ? `<button class="btn btn-secondary btn-sm" onclick="completeMaintenancePrompt('${m.id}', '${m.asset_id}')">Complete Servicing</button>`
-        : '<span class="text-secondary">-</span>';
-      
-      return `
-        <tr>
-          <td><strong>${m.asset_id}</strong></td>
-          <td>${m.asset_name}</td>
-          <td>${m.service_provider}</td>
-          <td>UGX ${Number(m.cost).toLocaleString()}</td>
-          <td>${m.service_date}</td>
-          <td>${m.next_service_date || 'N/A'}</td>
-          <td><span class="status-badge ${m.completed ? 'active' : 'under-maintenance'}">${m.completed ? 'Completed' : 'Open'}</span></td>
-          <td>${actionBtn}</td>
-        </tr>
-      `;
-    }).join('');
+    renderMaintenanceTableRows(records);
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="8" class="table-empty text-danger">${err.message}</td></tr>`;
   }
+}
+
+function renderMaintenanceSummary(records) {
+  const summary = document.getElementById('maintenance-summary');
+  
+  const counts = {
+    overdue: records.filter(m => m.progress_status === 'Overdue').length,
+    inProgress: records.filter(m => m.progress_status === 'In Progress').length,
+    scheduled: records.filter(m => m.progress_status === 'Scheduled').length,
+    completed: records.filter(m => m.progress_status === 'Completed').length
+  };
+  
+  summary.innerHTML = `
+    <div class="metric-card card-maint">
+      <div class="metric-info">
+        <span class="metric-title">Overdue</span>
+        <span class="metric-value">${counts.overdue}</span>
+      </div>
+      <div class="metric-icon-box" style="background-color: #ffebee; color: #c53030;">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+        </svg>
+      </div>
+    </div>
+    
+    <div class="metric-card card-maint">
+      <div class="metric-info">
+        <span class="metric-title">In Progress</span>
+        <span class="metric-value">${counts.inProgress}</span>
+      </div>
+      <div class="metric-icon-box" style="background-color: #fff3e0; color: #e65100;">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+        </svg>
+      </div>
+    </div>
+    
+    <div class="metric-card card-storage">
+      <div class="metric-info">
+        <span class="metric-title">Scheduled</span>
+        <span class="metric-value">${counts.scheduled}</span>
+      </div>
+      <div class="metric-icon-box" style="background-color: #e3f2fd; color: #1565c0;">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+          <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5-7h4v2h-4zm0 4h4v2h-4zm-5-8h2v2h-2zm3 0h2v2h-2zm3 0h2v2h-2z"/>
+        </svg>
+      </div>
+    </div>
+    
+    <div class="metric-card card-active">
+      <div class="metric-info">
+        <span class="metric-title">Completed</span>
+        <span class="metric-value">${counts.completed}</span>
+      </div>
+      <div class="metric-icon-box" style="background-color: #e8f5e9; color: #2e7d32;">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+        </svg>
+      </div>
+    </div>
+  `;
+}
+
+function renderMaintenanceTableRows(records) {
+  const tbody = document.getElementById('maintenance-tbody');
+  
+  if (records.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="table-empty">No maintenance events recorded.</td></tr>`;
+    return;
+  }
+  
+  tbody.innerHTML = records.map(m => {
+    // Determine progress badge color and text
+    let progressBadgeClass = 'active';
+    if (m.progress_status === 'Overdue') progressBadgeClass = 'disposed';
+    else if (m.progress_status === 'In Progress') progressBadgeClass = 'under-maintenance';
+    else if (m.progress_status === 'Scheduled') progressBadgeClass = 'in-storage';
+    else if (m.progress_status === 'Completed') progressBadgeClass = 'active';
+    
+    // Determine next action
+    let nextAction = '';
+    if (m.completed === 1) {
+      nextAction = '<span class="text-secondary">-</span>';
+    } else if (currentUser.role === 'AssetManager') {
+      nextAction = `<button class="btn btn-secondary btn-sm" onclick="completeMaintenancePrompt('${m.id}', '${m.asset_id}')">Complete</button>`;
+    } else {
+      nextAction = '<span class="text-secondary">Pending</span>';
+    }
+    
+    // Calculate days remaining/overdue
+    let daysInfo = '';
+    if (m.next_service_date) {
+      const today = new Date();
+      const dueDate = new Date(m.next_service_date);
+      const diffTime = dueDate - today;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays < 0) {
+        daysInfo = `<span style="color: #c53030; font-weight: 600;">${Math.abs(diffDays)} days overdue</span>`;
+      } else if (diffDays <= 7) {
+        daysInfo = `<span style="color: #e65100; font-weight: 600;">${diffDays} days remaining</span>`;
+      }
+    }
+    
+    return `
+      <tr>
+        <td><strong>${m.asset_id}</strong></td>
+        <td>${m.asset_name}</td>
+        <td>${m.service_provider}</td>
+        <td>UGX ${Number(m.cost).toLocaleString()}</td>
+        <td>${m.service_date}</td>
+        <td>
+          <div>${m.next_service_date || 'N/A'}</div>
+          ${daysInfo}
+        </td>
+        <td><span class="status-badge ${progressBadgeClass}">${m.progress_status}</span></td>
+        <td>${nextAction}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function filterMaintenanceTable() {
+  const statusFilter = document.getElementById('maint-filter-status')?.value || '';
+  const searchFilter = document.getElementById('maint-search')?.value.toLowerCase() || '';
+  
+  if (!cacheData.maintenance) return;
+  
+  const filtered = cacheData.maintenance.filter(m => {
+    const matchStatus = !statusFilter || m.progress_status === statusFilter;
+    const matchSearch = !searchFilter || 
+      m.asset_name.toLowerCase().includes(searchFilter) || 
+      m.service_provider.toLowerCase().includes(searchFilter) ||
+      m.asset_id.toLowerCase().includes(searchFilter);
+    
+    return matchStatus && matchSearch;
+  });
+  
+  renderMaintenanceTableRows(filtered);
 }
 
 // Store maintenance data for completion modal
@@ -1345,21 +1489,6 @@ async function completeMaintenancePrompt(maintenanceId, assetId) {
   // Open modal
   openModal('modal-complete-maintenance');
 }
-
-// Handle radio button change for maintenance action
-document.addEventListener('DOMContentLoaded', () => {
-  const radios = document.querySelectorAll('input[name="post-maintenance-action"]');
-  radios.forEach(radio => {
-    radio.addEventListener('change', (e) => {
-      const assignSection = document.getElementById('assign-user-section');
-      if (e.target.value === 'assign') {
-        assignSection.style.display = 'block';
-      } else {
-        assignSection.style.display = 'none';
-      }
-    });
-  });
-});
 
 // Submit complete maintenance
 async function submitCompleteMaintenance() {
