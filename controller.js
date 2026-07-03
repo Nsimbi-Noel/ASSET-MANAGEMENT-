@@ -1052,6 +1052,7 @@ module.exports = {
   createRequest,
   actionRequest,
   revokeRequest,
+  updateRequestFollowUp,
   getDashboardMetrics,
   generateAssetRegister,
   getAssetHistory,
