@@ -827,27 +827,48 @@ function exportAssetRegisterCSV() {
 }
 
 // ================= VIEW: MY ASSETS (Personal Dashboard) =================
+// ================= VIEW: MY ASSETS =================
 async function renderMyAssetsView(container) {
   try {
-    const res = await fetch('/api/assignments');
-    if (!res.ok) throw new Error('Failed to load your assets');
-    const allAssignments = await res.json();
+    // Fetch both assignments and requests in parallel
+    const [assignRes, requestRes] = await Promise.all([
+      fetch('/api/assignments'),
+      fetch('/api/requests')
+    ]);
     
-    // Filter to only show assets assigned to current user
-    const myAssets = allAssignments.filter(a => a.assigned_to === currentUser.id && a.status === 'Active');
+    if (!assignRes.ok) throw new Error('Failed to load your assets');
+    if (!requestRes.ok) throw new Error('Failed to load your requests');
+    
+    const allAssignments = await assignRes.json();
+    const allRequests = await requestRes.json();
+    
+    // Filter assignments to only show active ones for current user
+    const myAssignments = allAssignments.filter(a => a.assigned_to === currentUser.id && a.status === 'Active');
+    
+    // Filter requests to only show those for current user
+    const myRequests = allRequests.filter(r => r.requested_by === currentUser.id);
     
     // Calculate stats
-    const totalAssets = myAssets.length;
-    const confirmedAssets = myAssets.filter(a => a.confirmed_receipt === 1).length;
-    const pendingConfirmation = myAssets.filter(a => a.confirmed_receipt === 0).length;
+    const totalAssigned = myAssignments.length;
+    const confirmedAssets = myAssignments.filter(a => a.confirmed_receipt === 1).length;
+    const pendingRequests = myRequests.filter(r => r.status === 'Pending').length;
     
     container.innerHTML = `
-      <!-- Employee Assets Summary Cards -->
+      <div class="view-actions-bar">
+        <h3>My Assets Dashboard</h3>
+        <div>
+          <button class="btn btn-primary" onclick="openCreateRequestModal()">
+            Submit New Request
+          </button>
+        </div>
+      </div>
+
+      <!-- My Assets Summary Cards -->
       <div class="grid grid-3" style="margin-bottom: 2rem;">
         <div class="metric-card card-total">
           <div class="metric-info">
-            <span class="metric-title">Total Assets Assigned</span>
-            <span class="metric-value">${totalAssets}</span>
+            <span class="metric-title">Assets Assigned</span>
+            <span class="metric-value">${totalAssigned}</span>
           </div>
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9m3 14H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8"/></svg>
@@ -864,8 +885,8 @@ async function renderMyAssetsView(container) {
         </div>
         <div class="metric-card card-storage">
           <div class="metric-info">
-            <span class="metric-title">Pending Confirmation</span>
-            <span class="metric-value">${pendingConfirmation}</span>
+            <span class="metric-title">Pending Requests</span>
+            <span class="metric-value">${pendingRequests}</span>
           </div>
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -873,19 +894,18 @@ async function renderMyAssetsView(container) {
         </div>
       </div>
       
-      <!-- My Assets Table -->
+      <!-- Combined Assets Table -->
       <div class="table-card">
-        <h3>My Assigned Assets</h3>
         <div class="table-responsive">
           <table id="my-assets-table">
             <thead>
               <tr>
-                <th>Asset ID</th>
+                <th>Reference</th>
                 <th>Asset Name</th>
                 <th>Type</th>
-                <th>Serial Number</th>
-                <th>Assigned Date</th>
-                <th>Purpose</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Manager Feedback</th>
                 <th>Receipt Status</th>
                 <th>Action</th>
               </tr>
@@ -898,20 +918,24 @@ async function renderMyAssetsView(container) {
       </div>
     `;
     
-    renderMyAssetsTableRows(myAssets);
+    renderMyAssetsTableRows(myAssignments, myRequests);
   } catch (err) {
     container.innerHTML = `<div class="warning-banner">${err.message}</div>`;
   }
 }
 
-function renderMyAssetsTableRows(assets) {
+function renderMyAssetsTableRows(assignments, requests) {
   const tbody = document.getElementById('my-assets-tbody');
-  if (assets.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" class="table-empty">You don't have any assigned assets yet.</td></tr>`;
+  
+  if (assignments.length === 0 && requests.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="table-empty">You don't have any assigned assets or active requests yet.</td></tr>`;
     return;
   }
   
-  tbody.innerHTML = assets.map(a => {
+  let html = '';
+  
+  // 1. Render Assigned Assets first
+  assignments.forEach(a => {
     const receiptLabel = a.confirmed_receipt === 1 
       ? '<span class="status-badge active">✓ Confirmed</span>' 
       : '<span class="status-badge pending">⏱ Pending</span>';
@@ -920,19 +944,47 @@ function renderMyAssetsTableRows(assets) {
       ? `<button class="btn btn-secondary btn-sm" onclick="confirmReceiptAction('${a.id}')">Confirm Receipt</button>`
       : '<span class="text-secondary">-</span>';
     
-    return `
-      <tr>
+    html += `
+      <tr class="assignment-row">
         <td><strong>${a.asset_id}</strong></td>
         <td>${a.asset_name}</td>
-        <td>${a.asset_type}</td>
-        <td>${a.serial_number}</td>
+        <td>${a.asset_type || '-'}</td>
         <td>${a.assignment_date}</td>
-        <td>${a.purpose || '-'}</td>
+        <td><span class="status-badge active">Assigned</span></td>
+        <td><span class="text-secondary">N/A</span></td>
         <td>${receiptLabel}</td>
         <td>${actionBtn}</td>
       </tr>
     `;
-  }).join('');
+  });
+  
+  // 2. Render Requisitions next
+  requests.forEach(r => {
+    let actionBtn = '';
+    if (r.status === 'Approved') {
+      actionBtn = `<button class="btn btn-outline btn-sm" onclick="openRequestFollowUpModal('${r.id}')">Update Receipt</button>`;
+    } else {
+      actionBtn = '<span class="text-secondary">-</span>';
+    }
+    
+    const statusClass = r.status.toLowerCase();
+    const receiptStatusClass = r.received_status ? r.received_status.toLowerCase().replace(' ', '-') : 'pending';
+    
+    html += `
+      <tr class="request-row" style="background-color: rgba(10, 68, 142, 0.02);">
+        <td>#REQ-${r.id}</td>
+        <td>${r.asset_name}</td>
+        <td>${r.asset_type || '-'}</td>
+        <td>${new Date(r.created_at).toLocaleDateString()}</td>
+        <td><span class="status-badge ${statusClass}">${r.status}</span></td>
+        <td>${r.manager_notes || '<span class="text-secondary">-</span>'}</td>
+        <td><span class="status-badge ${receiptStatusClass}">${r.received_status || 'Pending'}</span></td>
+        <td>${actionBtn}</td>
+      </tr>
+    `;
+  });
+  
+  tbody.innerHTML = html;
 }
 
 // ================= VIEW: ASSIGNMENTS =================
@@ -1489,18 +1541,6 @@ async function completeMaintenancePrompt(maintenanceId, assetId) {
   // Open modal
   openModal('modal-complete-maintenance');
 }
-
-// Handle radio button change for maintenance action
-document.addEventListener('change', (e) => {
-  if (e.target.name === 'post-maintenance-action') {
-    const assignSection = document.getElementById('assign-user-section');
-    if (e.target.value === 'assign') {
-      assignSection.style.display = 'block';
-    } else {
-      assignSection.style.display = 'none';
-    }
-  }
-});
 
 // Submit complete maintenance
 async function submitCompleteMaintenance() {
