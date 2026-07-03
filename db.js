@@ -170,6 +170,18 @@ function initDb() {
 // Initialize database
 initDb();
 
+// Migration: Ensure requester_feedback and received_status exist in requests table for existing databases
+try {
+  db.exec("ALTER TABLE requests ADD COLUMN requester_feedback TEXT");
+} catch (e) {
+  // Column might already exist
+}
+try {
+  db.exec("ALTER TABLE requests ADD COLUMN received_status TEXT DEFAULT 'Pending'");
+} catch (e) {
+  // Column might already exist
+}
+
 module.exports = {
   db,
   dbPath
