@@ -1514,9 +1514,22 @@ async function completeMaintenancePrompt(maintenanceId, assetId) {
   document.getElementById('complete-maint-asset-name').textContent = maintenance.asset_name;
   document.getElementById('complete-maint-date').value = new Date().toISOString().split('T')[0];
   
-  // Load users for assignment dropdown
+  // Load users for assignment dropdown and try to pre-select last custodian
   try {
-    const usersRes = await fetch('/api/users');
+    const [usersRes, historyRes] = await Promise.all([
+      fetch('/api/users'),
+      fetch(`/api/reports/history/${assetId}`)
+    ]);
+    
+    let lastCustodianId = null;
+    if (historyRes.ok) {
+      const history = await historyRes.json();
+      if (history.assignments && history.assignments.length > 0) {
+        // The most recent assignment is first due to ORDER BY assignment_date DESC
+        lastCustodianId = history.assignments[0].assigned_to;
+      }
+    }
+
     if (usersRes.ok) {
       const users = await usersRes.json();
       const selectEl = document.getElementById('complete-maint-assign-to');
@@ -1525,13 +1538,14 @@ async function completeMaintenancePrompt(maintenanceId, assetId) {
         if (u.status === 'Active') {
           const option = document.createElement('option');
           option.value = u.id;
-          option.textContent = `${u.name} (${u.department})`;
+          option.textContent = `${u.name} (${u.department})${u.id === lastCustodianId ? ' [Last Custodian]' : ''}`;
+          if (u.id === lastCustodianId) option.selected = true;
           selectEl.appendChild(option);
         }
       });
     }
   } catch (err) {
-    console.error('Failed to load users:', err);
+    console.error('Failed to load users or history:', err);
   }
   
   // Reset radio buttons
