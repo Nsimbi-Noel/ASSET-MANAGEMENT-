@@ -37,32 +37,35 @@ A full-featured asset lifecycle management system for the Uganda Registration Se
 | Frontend | Vanilla JS SPA |
 | Auth | PBKDF2 (600K iterations) + session tokens |
 
-## Quick Start
+## Getting Started: Step-by-Step Guide
+
+Follow these instructions to set up and run the URSB Asset Management System locally.
+
+### 1. Clone the Repository
+
+First, clone the project repository from GitHub to your local machine:
 
 ```bash
-# 1. Clone
 git clone https://github.com/Nsimbi-Noel/ASSET-MANAGEMENT-.git
-
-# 2. Start (no install needed — zero deps)
-node server.js
-
-# 3. Open http://localhost:3000
+cd ASSET-MANAGEMENT-
 ```
 
-## Default Accounts
+### 2. Install Dependencies (Optional, for development)
 
-| Username | Password | Role |
-|----------|----------|------|
-| `admin` | `admin123` | Admin |
-| `manager` | `manager123` | AssetManager |
-| `custodian` | `custodian123` | AssetCustodian |
-| `employee` | `employee123` | Employee |
+This project is designed with zero external dependencies for its core functionality. However, if you plan to run tests or use development tools, you might need `npm`:
 
-> **Note:** Employees cannot access the Asset Register. They can only view the Dashboard, submit asset requests, and view their assignments.
+```bash
+npm install
+```
 
-## Environment Variables
+### 3. Configure Environment Variables (Optional)
 
-Copy `.env.example` to `.env` and customise:
+The system uses environment variables for configuration. A `.env.example` file is provided. You can copy it to `.env` and customize the settings if needed. The default values are usually sufficient for local development.
+
+```bash
+cp .env.example .env
+# Open .env in a text editor to modify variables like PORT, HOST, etc.
+```
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -75,7 +78,50 @@ Copy `.env.example` to `.env` and customise:
 | `RATE_LIMIT_MAX_LOGIN` | `10` | Max login attempts per 15 min |
 | `RATE_LIMIT_WINDOW_MS` | `900000` | Rate limit window in ms |
 
+### 4. Initialize and Seed the Database
+
+The application uses an SQLite database. You can initialize it and populate it with sample data using the `seed.js` script. This is highly recommended for first-time setup to have some data to work with.
+
+```bash
+node seed.js
+```
+
+This command will create a `data/database.db` file (if it doesn't exist) and insert default users, assets, and assignments.
+
+### 5. Start the Application
+
+Run the Node.js server. No build step is required for the frontend as it's a Vanilla JS SPA.
+
+```bash
+node server.js
+```
+
+The server will typically start on `http://localhost:3000` (or the port specified in your `.env` file).
+
+### 6. Access the Application
+
+Open your web browser and navigate to the address where the application is running:
+
+```
+http://localhost:3000
+```
+
+### 7. Login with Default Accounts
+
+Use the following default credentials to log in and explore the system:
+
+| Username | Password | Role |
+|----------|----------|------|
+| `admin` | `admin123` | Admin |
+| `manager` | `manager123` | AssetManager |
+| `custodian` | `custodian123` | AssetCustodian |
+| `employee` | `employee123` | Employee |
+
+> **Note:** Employees have restricted access. They can only view the Dashboard, submit asset requests, and manage their assigned assets.
+
 ## Docker
+
+To run the application using Docker:
 
 ```bash
 docker build -t ursb-ams .
@@ -112,6 +158,17 @@ All routes under `/api/`:
 
 ## Changelog
 
+### v1.2.0 — 2026-07-03
+
+**Enhancements**
+- **My Assets View**: Consolidated assigned assets and pending requests into a single "My Assets" dashboard for employees, providing a unified view of their current asset status and requests. Includes summary cards for total assigned assets, confirmed receipts, and pending requests.
+- **Maintenance Dashboard**: Enhanced the Asset Manager's maintenance view with a comprehensive dashboard, including summary metrics for overdue, in-progress, scheduled, and completed service tickets. Added visual progress badges, countdown indicators, and advanced filtering options.
+
+### v1.1.1 — 2026-07-03
+
+**Bug Fixes**
+- **Maintenance Modal User Dropdown**: Restored the visibility toggle for the user assignment dropdown in the maintenance completion modal, ensuring it appears correctly when selecting to assign an asset after maintenance.
+
 ### v1.1.0 — 2026-06-27
 
 **Bug Fixes**
@@ -128,6 +185,10 @@ All routes under `/api/`:
 
 ## Testing
 
+To run the automated integration test suite:
+
 ```bash
 npm test
 ```
+
+This will execute `test_api.js` and verify core functionalities of the system.

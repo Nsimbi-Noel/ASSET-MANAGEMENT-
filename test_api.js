@@ -196,6 +196,27 @@ async function runTests() {
     assert.strictEqual(registrationAudit.username, 'manager', 'Audit should record the correct initiating user');
     console.log(`${green}✓ Audit trail captured registered asset successfully.${reset}`);
 
+    // 7. Test Request Follow-Up
+    console.log('\nTesting Request Follow-Up...');
+    const request = controller.createRequest(employeeUser, {
+      assetName: 'Follow-up Test Laptop',
+      assetType: 'Laptop',
+      purpose: 'Testing follow-up feature'
+    });
+    assert.ok(request.id, 'Request should be created');
+
+    const followUpResult = controller.updateRequestFollowUp(employeeUser, request.id, {
+      feedback: 'Excellent condition',
+      receivedStatus: 'Received'
+    });
+    assert.ok(followUpResult.success, 'Follow-up update should be successful');
+
+    const updatedRequests = controller.listRequests(employeeUser);
+    const updatedRequest = updatedRequests.find(r => r.id === request.id);
+    assert.strictEqual(updatedRequest.requester_feedback, 'Excellent condition', 'Feedback should be updated');
+    assert.strictEqual(updatedRequest.received_status, 'Received', 'Received status should be updated');
+    console.log(`${green}✓ Request follow-up updated and verified successfully.${reset}`);
+
     console.log(`\n${green}=========================================`);
     console.log(`ALL INTEGRATION TESTS PASSED SUCCESSFULLY!`);
     console.log(`=========================================${reset}`);

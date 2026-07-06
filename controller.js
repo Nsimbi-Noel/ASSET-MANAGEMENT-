@@ -540,10 +540,16 @@ function transferAsset(reqUser, { assetId, toUserId, reason, transferDate }) {
 
 function listMaintenance() {
   const query = db.prepare(`
-    SELECT m.*, a.name as asset_name, a.type as asset_type
+    SELECT m.*, a.name as asset_name, a.type as asset_type, a.status as asset_status,
+           CASE 
+             WHEN m.completed = 1 THEN 'Completed'
+             WHEN date(m.next_service_date) < date('now') THEN 'Overdue'
+             WHEN date(m.service_date) <= date('now') THEN 'In Progress'
+             ELSE 'Scheduled'
+           END as progress_status
     FROM maintenance m
     JOIN assets a ON m.asset_id = a.id
-    ORDER BY m.service_date DESC
+    ORDER BY m.completed ASC, m.service_date DESC
   `);
   return query.all();
 }
