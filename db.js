@@ -119,11 +119,18 @@ function initDb() {
       manager_notes TEXT,
       actioned_by INTEGER REFERENCES users(id),
       actioned_date TEXT,
-      requester_feedback TEXT,
-      received_status TEXT DEFAULT 'Pending', -- Pending, Received, Not Received
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  // Migration for Requests Table
+  try {
+    db.exec("ALTER TABLE requests ADD COLUMN requester_feedback TEXT;");
+  } catch (e) { /* ignore if column exists */ }
+  
+  try {
+    db.exec("ALTER TABLE requests ADD COLUMN received_status TEXT DEFAULT 'Pending';");
+  } catch (e) { /* ignore if column exists */ }
 
   // 8. Audit Log Table (un-deletable system audit trail)
   db.exec(`

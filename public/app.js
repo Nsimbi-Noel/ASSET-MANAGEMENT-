@@ -1347,7 +1347,7 @@ async function completeMaintenancePrompt(maintenanceId, assetId) {
 }
 
 // Handle radio button change for maintenance action
-document.addEventListener('DOMContentLoaded', () => {
+function initMaintenanceActionListeners() {
   const radios = document.querySelectorAll('input[name="post-maintenance-action"]');
   radios.forEach(radio => {
     radio.addEventListener('change', (e) => {
@@ -1359,7 +1359,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   });
-});
+}
+
+// Call this during initial load and view rendering if needed
+document.addEventListener('DOMContentLoaded', initMaintenanceActionListeners);
 
 // Submit complete maintenance
 async function submitCompleteMaintenance() {
