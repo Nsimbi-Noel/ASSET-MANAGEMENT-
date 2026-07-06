@@ -12,6 +12,16 @@ let cacheData = {
   audits: []
 };
 
+// Holds a one-time filter to apply to the next view we navigate into
+// (e.g. clicking a dashboard metric card jumps to a view pre-filtered
+// to match that metric). Consumed and cleared by the destination view's
+// render function.
+let pendingViewFilter = null;
+// True when the current view was navigated to directly from the dashboard
+// (e.g. by clicking a metric card). Drives the header's "Back to
+// Dashboard" shortcut so the user doesn't need the sidebar to return.
+let cameFromDashboard = false;
+
 // Document Ready
 document.addEventListener('DOMContentLoaded', () => {
   initApp();
@@ -217,12 +227,26 @@ async function handleLogout() {
 }
 
 // Navigation & Router
-function navigateTo(view) {
+// `filter` is an optional plain object describing how the destination view
+// should be pre-filtered, e.g. { status: 'Active' } for the Asset Register
+// or { progressStatus: 'In Progress' } for the Maintenance Log. Used by the
+// clickable dashboard metric cards to jump straight to a filtered list.
+function navigateTo(view, filter = null) {
   // Employees are not allowed to access the Asset Register view
   if (view === 'register' && currentUser && currentUser.role === 'Employee') {
     view = 'dashboard';
+    filter = null;
   }
+  const previousView = activeView;
+  pendingViewFilter = filter;
   activeView = view;
+
+  // Show the header's "Back to Dashboard" shortcut only when the user just
+  // came from the dashboard (e.g. clicked a metric card) and isn't already
+  // back on it, so they never have to reach for the sidebar to return.
+  cameFromDashboard = (previousView === 'dashboard' && view !== 'dashboard');
+  const backBtn = document.getElementById('back-to-dashboard-btn');
+  if (backBtn) backBtn.style.display = cameFromDashboard ? 'inline-flex' : 'none';
   document.querySelectorAll('.nav-link').forEach(link => {
     if (link.getAttribute('data-view') === view) {
       link.classList.add('active');
@@ -302,9 +326,9 @@ async function renderDashboardView(container) {
     const data = await res.json();
     
     container.innerHTML = `
-      <!-- Metric Cards Grid -->
+      <!-- Metric Cards Grid: each card is a clickable shortcut into a pre-filtered view -->
       <div class="grid grid-4" style="margin-bottom: 2rem;">
-        <div class="metric-card card-total">
+        <button type="button" class="metric-card metric-card-clickable card-total" onclick="navigateTo('register')" title="View all assets in the Asset Register">
           <div class="metric-info">
             <span class="metric-title">Total Active Assets</span>
             <span class="metric-value">${data.counts.Active + data.counts.InStorage + data.counts.UnderMaintenance}</span>
@@ -312,8 +336,8 @@ async function renderDashboardView(container) {
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9m3 14H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8"/></svg>
           </div>
-        </div>
-        <div class="metric-card card-active">
+        </button>
+        <button type="button" class="metric-card metric-card-clickable card-active" onclick="navigateTo('register', { status: 'Active' })" title="View assigned (active) assets in the Asset Register">
           <div class="metric-info">
             <span class="metric-title">Assigned (Active)</span>
             <span class="metric-value">${data.assignmentRatio.assigned || 0}</span>
@@ -321,8 +345,8 @@ async function renderDashboardView(container) {
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
           </div>
-        </div>
-        <div class="metric-card card-storage">
+        </button>
+        <button type="button" class="metric-card metric-card-clickable card-storage" onclick="navigateTo('register', { status: 'In Storage' })" title="View in-storage assets in the Asset Register">
           <div class="metric-info">
             <span class="metric-title">In Storage</span>
             <span class="metric-value">${data.counts.InStorage}</span>
@@ -330,8 +354,8 @@ async function renderDashboardView(container) {
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
           </div>
-        </div>
-        <div class="metric-card card-maint">
+        </button>
+        <button type="button" class="metric-card metric-card-clickable card-maint" onclick="navigateTo('maintenance', { progressStatus: 'Active' })" title="View active maintenance tickets in the Maintenance Log">
           <div class="metric-info">
             <span class="metric-title">Under Maintenance</span>
             <span class="metric-value">${data.counts.UnderMaintenance}</span>
@@ -339,7 +363,7 @@ async function renderDashboardView(container) {
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
           </div>
-        </div>
+        </button>
       </div>
 
       <!-- Acquisition Trend (full width, stretched) -->
@@ -747,6 +771,15 @@ async function renderRegisterView(container) {
     `;
     
     renderAssetTableRows(data);
+
+    // If we arrived here via a dashboard metric card click, pre-apply its filter
+    if (pendingViewFilter) {
+      const { status, type } = pendingViewFilter;
+      pendingViewFilter = null;
+      if (status) document.getElementById('asset-filter-status').value = status;
+      if (type) document.getElementById('asset-filter-type').value = type;
+      if (status || type) filterAssetTable();
+    }
     
   } catch (err) {
     container.innerHTML = `<div class="warning-banner">${err.message}</div>`;
@@ -845,6 +878,14 @@ function exportAssetRegisterCSV() {
 
 // ================= VIEW: MY ASSETS (Personal Dashboard) =================
 // ================= VIEW: MY ASSETS =================
+
+// Holds the current user's assignments/requests for the My Assets view so
+// the metric cards can re-filter the table client-side without refetching.
+let myAssetsViewData = { assignments: [], requests: [] };
+// Which metric card is currently selected as a table filter: '', 'assigned',
+// 'received', or 'pending'.
+let myAssetsActiveFilter = '';
+
 async function renderMyAssetsView(container) {
   try {
     // Fetch both assignments and requests in parallel
@@ -865,10 +906,21 @@ async function renderMyAssetsView(container) {
     // Filter requests to only show those for current user
     const myRequests = allRequests.filter(r => r.requested_by === currentUser.id);
     
+    // Cache for client-side filtering when a metric card is clicked, and
+    // reset any filter selection from a previous visit to this view.
+    myAssetsViewData = { assignments: myAssignments, requests: myRequests };
+    myAssetsActiveFilter = '';
+    
     // Calculate stats
     const totalAssigned = myAssignments.length;
     const confirmedAssets = myAssignments.filter(a => a.confirmed_receipt === 1).length;
+    // Requests that were approved AND the requester has confirmed receiving
+    // the asset - these are just as much "assets you have" as a direct
+    // assignment, so they should count toward your holdings too.
+    const receivedRequests = myRequests.filter(r => r.status === 'Approved' && r.received_status === 'Received');
     const pendingRequests = myRequests.filter(r => r.status === 'Pending').length;
+    // Everything currently in the user's possession, whichever route it came through.
+    const totalHeld = totalAssigned + receivedRequests.length;
     
     container.innerHTML = `
       <div class="view-actions-bar">
@@ -880,27 +932,37 @@ async function renderMyAssetsView(container) {
         </div>
       </div>
 
-      <!-- My Assets Summary Cards -->
-      <div class="grid grid-3" style="margin-bottom: 2rem;">
-        <div class="metric-card card-total">
+      <!-- My Assets Summary Cards: click a card to filter the table below it -->
+      <div class="grid grid-4" style="margin-bottom: 2rem;">
+        <button type="button" id="my-assets-card-all" class="metric-card metric-card-clickable card-total" onclick="filterMyAssetsTable('')" title="Show everything: assigned and received assets, plus all your requests">
           <div class="metric-info">
-            <span class="metric-title">Assets Assigned</span>
-            <span class="metric-value">${totalAssigned}</span>
+            <span class="metric-title">Total Assets Held</span>
+            <span class="metric-value">${totalHeld}</span>
           </div>
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9m3 14H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8"/></svg>
           </div>
-        </div>
-        <div class="metric-card card-active">
+        </button>
+        <button type="button" id="my-assets-card-assigned" class="metric-card metric-card-clickable card-active" onclick="filterMyAssetsTable('assigned')" title="Show only assets directly assigned to you">
           <div class="metric-info">
-            <span class="metric-title">Receipt Confirmed</span>
-            <span class="metric-value">${confirmedAssets}</span>
+            <span class="metric-title">Directly Assigned</span>
+            <span class="metric-value">${totalAssigned}</span>
+            <span class="metric-subtext">${confirmedAssets} receipt confirmed</span>
+          </div>
+          <div class="metric-icon-box">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/></svg>
+          </div>
+        </button>
+        <button type="button" id="my-assets-card-received" class="metric-card metric-card-clickable card-storage" onclick="filterMyAssetsTable('received')" title="Show requests you've received the asset for">
+          <div class="metric-info">
+            <span class="metric-title">Received via Request</span>
+            <span class="metric-value">${receivedRequests.length}</span>
           </div>
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           </div>
-        </div>
-        <div class="metric-card card-storage">
+        </button>
+        <button type="button" id="my-assets-card-pending" class="metric-card metric-card-clickable card-maint" onclick="filterMyAssetsTable('pending')" title="Show requests still awaiting a decision">
           <div class="metric-info">
             <span class="metric-title">Pending Requests</span>
             <span class="metric-value">${pendingRequests}</span>
@@ -908,7 +970,7 @@ async function renderMyAssetsView(container) {
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           </div>
-        </div>
+        </button>
       </div>
       
       <!-- Combined Assets Table -->
@@ -941,11 +1003,49 @@ async function renderMyAssetsView(container) {
   }
 }
 
-function renderMyAssetsTableRows(assignments, requests) {
+// Applies the currently-selected metric card filter to the cached My Assets
+// data and re-renders the table - no re-fetch needed, so it's instant.
+function filterMyAssetsTable(type) {
+  // Clicking the already-active card toggles the filter back off.
+  myAssetsActiveFilter = (myAssetsActiveFilter === type) ? '' : type;
+  
+  ['all', 'assigned', 'received', 'pending'].forEach(key => {
+    const card = document.getElementById(`my-assets-card-${key}`);
+    if (!card) return;
+    const isSelected = (key === 'all' && myAssetsActiveFilter === '') || key === myAssetsActiveFilter;
+    card.classList.toggle('metric-card-selected', isSelected);
+  });
+  
+  let assignments = myAssetsViewData.assignments;
+  let requests = myAssetsViewData.requests;
+  
+  switch (myAssetsActiveFilter) {
+    case 'assigned':
+      requests = [];
+      break;
+    case 'received':
+      assignments = [];
+      requests = requests.filter(r => r.status === 'Approved' && r.received_status === 'Received');
+      break;
+    case 'pending':
+      assignments = [];
+      requests = requests.filter(r => r.status === 'Pending');
+      break;
+    default:
+      // No filter: show everything, same as the initial view load.
+      break;
+  }
+  
+  renderMyAssetsTableRows(assignments, requests, myAssetsActiveFilter !== '');
+}
+
+function renderMyAssetsTableRows(assignments, requests, isFiltered = false) {
   const tbody = document.getElementById('my-assets-tbody');
   
   if (assignments.length === 0 && requests.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" class="table-empty">You don't have any assigned assets or active requests yet.</td></tr>`;
+    tbody.innerHTML = isFiltered
+      ? `<tr><td colspan="8" class="table-empty">No items match this filter.</td></tr>`
+      : `<tr><td colspan="8" class="table-empty">You don't have any assigned assets or active requests yet.</td></tr>`;
     return;
   }
   
@@ -1305,6 +1405,7 @@ async function renderMaintenanceView(container) {
       <div class="filters-bar" style="margin-bottom: 1.5rem;">
         <select id="maint-filter-status" class="filter-select" onchange="filterMaintenanceTable()">
           <option value="">All Statuses</option>
+          <option value="Active">Active (Ongoing)</option>
           <option value="Overdue">Overdue</option>
           <option value="In Progress">In Progress</option>
           <option value="Scheduled">Scheduled</option>
@@ -1336,7 +1437,17 @@ async function renderMaintenanceView(container) {
       </div>
     `;
     
-    loadMaintenanceTable();
+    await loadMaintenanceTable();
+
+    // If we arrived here via a dashboard metric card click, pre-apply its filter
+    if (pendingViewFilter) {
+      const { progressStatus } = pendingViewFilter;
+      pendingViewFilter = null;
+      if (progressStatus) {
+        document.getElementById('maint-filter-status').value = progressStatus;
+        filterMaintenanceTable();
+      }
+    }
   } catch (err) {
     container.innerHTML = `<div class="warning-banner">${err.message}</div>`;
   }
@@ -1376,8 +1487,10 @@ function renderMaintenanceSummary(records) {
     completed: records.filter(m => m.progress_status === 'Completed').length
   };
   
+  // Each card is clickable and instantly filters the table below it,
+  // mirroring the same status options as the "All Statuses" dropdown.
   summary.innerHTML = `
-    <div class="metric-card card-maint">
+    <button type="button" class="metric-card metric-card-clickable card-maint" onclick="setMaintenanceStatusFilter('Overdue')" title="Show overdue maintenance tickets">
       <div class="metric-info">
         <span class="metric-title">Overdue</span>
         <span class="metric-value">${counts.overdue}</span>
@@ -1387,9 +1500,9 @@ function renderMaintenanceSummary(records) {
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
         </svg>
       </div>
-    </div>
+    </button>
     
-    <div class="metric-card card-maint">
+    <button type="button" class="metric-card metric-card-clickable card-maint" onclick="setMaintenanceStatusFilter('In Progress')" title="Show in-progress maintenance tickets">
       <div class="metric-info">
         <span class="metric-title">In Progress</span>
         <span class="metric-value">${counts.inProgress}</span>
@@ -1399,9 +1512,9 @@ function renderMaintenanceSummary(records) {
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
         </svg>
       </div>
-    </div>
+    </button>
     
-    <div class="metric-card card-storage">
+    <button type="button" class="metric-card metric-card-clickable card-storage" onclick="setMaintenanceStatusFilter('Scheduled')" title="Show scheduled maintenance tickets">
       <div class="metric-info">
         <span class="metric-title">Scheduled</span>
         <span class="metric-value">${counts.scheduled}</span>
@@ -1411,9 +1524,9 @@ function renderMaintenanceSummary(records) {
           <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5-7h4v2h-4zm0 4h4v2h-4zm-5-8h2v2h-2zm3 0h2v2h-2zm3 0h2v2h-2z"/>
         </svg>
       </div>
-    </div>
+    </button>
     
-    <div class="metric-card card-active">
+    <button type="button" class="metric-card metric-card-clickable card-active" onclick="setMaintenanceStatusFilter('Completed')" title="Show completed maintenance tickets">
       <div class="metric-info">
         <span class="metric-title">Completed</span>
         <span class="metric-value">${counts.completed}</span>
@@ -1423,8 +1536,17 @@ function renderMaintenanceSummary(records) {
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
         </svg>
       </div>
-    </div>
+    </button>
   `;
+}
+
+// Sets the maintenance status dropdown to the given value (or clears it if
+// it's already selected, acting as a toggle) and re-filters the table.
+function setMaintenanceStatusFilter(status) {
+  const select = document.getElementById('maint-filter-status');
+  if (!select) return;
+  select.value = (select.value === status) ? '' : status;
+  filterMaintenanceTable();
 }
 
 function renderMaintenanceTableRows(records) {
@@ -1493,7 +1615,8 @@ function filterMaintenanceTable() {
   if (!cacheData.maintenance) return;
   
   const filtered = cacheData.maintenance.filter(m => {
-    const matchStatus = !statusFilter || m.progress_status === statusFilter;
+    const matchStatus = !statusFilter ||
+      (statusFilter === 'Active' ? m.progress_status !== 'Completed' : m.progress_status === statusFilter);
     const matchSearch = !searchFilter || 
       m.asset_name.toLowerCase().includes(searchFilter) || 
       m.service_provider.toLowerCase().includes(searchFilter) ||
@@ -2691,7 +2814,9 @@ async function submitRequisition(e) {
     if (res.ok) {
       showToast('Requisition submitted for review!', 'success');
       closeModal('modal-create-request');
-      renderView('requests');
+      // Refresh whichever view the request was submitted from (My Assets or
+      // Requests) so its stats/table reflect the new request immediately.
+      renderView(activeView);
     } else {
       showToast(data.error || 'Failed to submit request', 'error');
     }
@@ -2729,7 +2854,9 @@ async function submitRequestFollowUp(e) {
     if (res.ok) {
       showToast('Status updated successfully!', 'success');
       closeModal('modal-request-followup');
-      renderView('requests');
+      // Refresh whichever view triggered this (My Assets or Requests) so its
+      // stats/table reflect the updated receipt status immediately.
+      renderView(activeView);
     } else {
       const data = await res.json();
       showToast(data.error || 'Failed to update status', 'error');
