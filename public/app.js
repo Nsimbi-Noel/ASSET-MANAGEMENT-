@@ -82,8 +82,10 @@ function showApp() {
     }
   });
 
-  // Load notifications (maintenance due check)
+  // Load notifications (maintenance due check) and keep polling so managers
+  // are notified as soon as a maintenance job's estimated duration elapses.
   loadUpcomingAlerts();
+  startAlertsPolling();
 
   // If an Employee somehow lands on 'register', redirect to dashboard
   if (currentUser.role === 'Employee' && activeView === 'register') {
@@ -158,6 +160,8 @@ function setupEventListeners() {
   document.getElementById('assign-asset-form').addEventListener('submit', submitAssignAsset);
   document.getElementById('transfer-asset-form').addEventListener('submit', submitTransferAsset);
   document.getElementById('maintenance-asset-form').addEventListener('submit', submitMaintenanceEvent);
+  document.getElementById('maint-date').addEventListener('change', updateExpectedCompletionHint);
+  document.getElementById('maint-duration').addEventListener('input', updateExpectedCompletionHint);
   document.getElementById('dispose-asset-form').addEventListener('submit', submitDisposal);
   document.getElementById('create-request-form').addEventListener('submit', submitRequisition);
   document.getElementById('request-followup-form').addEventListener('submit', submitRequestFollowUp);
@@ -355,7 +359,7 @@ async function renderDashboardView(container) {
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
           </div>
         </button>
-        <button type="button" class="metric-card metric-card-clickable card-maint" onclick="navigateTo('maintenance', { progressStatus: 'Active' })" title="View active maintenance tickets in the Maintenance Log">
+        <button type="button" class="metric-card metric-card-clickable card-maint" onclick="navigateTo('maintenance', { progressStatus: data.maintenanceReadyForReview.length > 0 ? 'Ready for Review' : 'Active' })" title="View active maintenance tickets in the Maintenance Log">
           <div class="metric-info">
             <span class="metric-title">Under Maintenance</span>
             <span class="metric-value">${data.counts.UnderMaintenance}</span>
@@ -412,6 +416,39 @@ async function renderDashboardView(container) {
         </div>
       </div>
       
+      <!-- Maintenance Ready for Review -->
+      <div class="dashboard-card" style="margin-top: 1.5rem;">
+        <h3>Maintenance Ready for Review <span class="text-secondary" style="font-size:0.8rem;font-weight:400;">Estimated duration has elapsed &mdash; decide next step</span></h3>
+        <div class="table-responsive">
+          <table style="margin-top: 0.5rem;">
+            <thead>
+              <tr>
+                <th>Asset ID</th>
+                <th>Asset Name</th>
+                <th>Service Provider</th>
+                <th>Expected Completion</th>
+                <th>Days Overdue</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.maintenanceReadyForReview.length === 0 ? `
+                <tr><td colspan="6" class="text-center text-secondary">No maintenance jobs are due for review right now.</td></tr>
+              ` : data.maintenanceReadyForReview.map(m => `
+                <tr>
+                  <td><a href="#" class="text-link" onclick="viewAssetDetails('${m.asset_id}')">${m.asset_id}</a></td>
+                  <td><strong>${m.asset_name}</strong></td>
+                  <td>${m.service_provider}</td>
+                  <td><span class="text-danger" style="font-weight:600;">${m.expected_completion_date}</span></td>
+                  <td>${m.days_overdue > 0 ? `${m.days_overdue} day(s)` : 'Due today'}</td>
+                  <td>${currentUser.role === 'AssetManager' ? `<button class="btn btn-primary btn-sm" onclick="completeMaintenancePrompt('${m.id}', '${m.asset_id}')">Review &amp; Decide</button>` : '<span class="text-secondary">-</span>'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Maintenance Overdue Warnings -->
       <div class="dashboard-card" style="margin-top: 1.5rem;">
         <h3>Upcoming and Overdue Maintenance</h3>
@@ -1397,7 +1434,7 @@ async function renderMaintenanceView(container) {
       </div>
       
       <!-- Maintenance Status Summary Cards -->
-      <div class="grid grid-4" id="maintenance-summary" style="margin-bottom: 2rem;">
+      <div class="grid grid-5" id="maintenance-summary" style="margin-bottom: 2rem;">
         <!-- Populated dynamically -->
       </div>
       
@@ -1406,6 +1443,7 @@ async function renderMaintenanceView(container) {
         <select id="maint-filter-status" class="filter-select" onchange="filterMaintenanceTable()">
           <option value="">All Statuses</option>
           <option value="Active">Active (Ongoing)</option>
+          <option value="Ready for Review">Ready for Review</option>
           <option value="Overdue">Overdue</option>
           <option value="In Progress">In Progress</option>
           <option value="Scheduled">Scheduled</option>
@@ -1424,6 +1462,7 @@ async function renderMaintenanceView(container) {
                 <th>Service Provider</th>
                 <th>Cost (UGX)</th>
                 <th>Service Date</th>
+                <th>Expected Completion</th>
                 <th>Next Service Due</th>
                 <th>Progress</th>
                 <th>Next Action</th>
@@ -1455,7 +1494,7 @@ async function renderMaintenanceView(container) {
 
 async function loadMaintenanceTable() {
   const tbody = document.getElementById('maintenance-tbody');
-  tbody.innerHTML = `<tr><td colspan="8" class="table-empty">Loading tickets...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="9" class="table-empty">Loading tickets...</td></tr>`;
   try {
     const res = await fetch('/api/maintenance');
     if (!res.ok) throw new Error('Failed to load maintenance records');
@@ -1467,13 +1506,13 @@ async function loadMaintenanceTable() {
     renderMaintenanceSummary(records);
     
     if (records.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" class="table-empty">No maintenance events recorded.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="table-empty">No maintenance events recorded.</td></tr>`;
       return;
     }
     
     renderMaintenanceTableRows(records);
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="8" class="table-empty text-danger">${err.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="table-empty text-danger">${err.message}</td></tr>`;
   }
 }
 
@@ -1481,6 +1520,7 @@ function renderMaintenanceSummary(records) {
   const summary = document.getElementById('maintenance-summary');
   
   const counts = {
+    readyForReview: records.filter(m => m.progress_status === 'Ready for Review' || m.progress_status === 'Due Today').length,
     overdue: records.filter(m => m.progress_status === 'Overdue').length,
     inProgress: records.filter(m => m.progress_status === 'In Progress').length,
     scheduled: records.filter(m => m.progress_status === 'Scheduled').length,
@@ -1490,6 +1530,18 @@ function renderMaintenanceSummary(records) {
   // Each card is clickable and instantly filters the table below it,
   // mirroring the same status options as the "All Statuses" dropdown.
   summary.innerHTML = `
+    <button type="button" class="metric-card metric-card-clickable card-maint" onclick="setMaintenanceStatusFilter('Ready for Review')" title="Show jobs whose estimated duration has elapsed and need a decision">
+      <div class="metric-info">
+        <span class="metric-title">Ready for Review</span>
+        <span class="metric-value">${counts.readyForReview}</span>
+      </div>
+      <div class="metric-icon-box" style="background-color: #ffebee; color: #c53030;">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+        </svg>
+      </div>
+    </button>
+
     <button type="button" class="metric-card metric-card-clickable card-maint" onclick="setMaintenanceStatusFilter('Overdue')" title="Show overdue maintenance tickets">
       <div class="metric-info">
         <span class="metric-title">Overdue</span>
@@ -1553,24 +1605,27 @@ function renderMaintenanceTableRows(records) {
   const tbody = document.getElementById('maintenance-tbody');
   
   if (records.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" class="table-empty">No maintenance events recorded.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="table-empty">No maintenance events recorded.</td></tr>`;
     return;
   }
   
   tbody.innerHTML = records.map(m => {
     // Determine progress badge color and text
     let progressBadgeClass = 'active';
-    if (m.progress_status === 'Overdue') progressBadgeClass = 'disposed';
+    if (m.progress_status === 'Ready for Review' || m.progress_status === 'Due Today') progressBadgeClass = 'disposed';
+    else if (m.progress_status === 'Overdue') progressBadgeClass = 'disposed';
     else if (m.progress_status === 'In Progress') progressBadgeClass = 'under-maintenance';
     else if (m.progress_status === 'Scheduled') progressBadgeClass = 'in-storage';
     else if (m.progress_status === 'Completed') progressBadgeClass = 'active';
+    
+    const readyForReview = m.completed !== 1 && (m.progress_status === 'Ready for Review' || m.progress_status === 'Due Today');
     
     // Determine next action
     let nextAction = '';
     if (m.completed === 1) {
       nextAction = '<span class="text-secondary">-</span>';
     } else if (currentUser.role === 'AssetManager') {
-      nextAction = `<button class="btn btn-secondary btn-sm" onclick="completeMaintenancePrompt('${m.id}', '${m.asset_id}')">Complete</button>`;
+      nextAction = `<button class="btn ${readyForReview ? 'btn-primary' : 'btn-secondary'} btn-sm" onclick="completeMaintenancePrompt('${m.id}', '${m.asset_id}')">${readyForReview ? 'Review & Decide' : 'Complete'}</button>`;
     } else {
       nextAction = '<span class="text-secondary">Pending</span>';
     }
@@ -1597,6 +1652,7 @@ function renderMaintenanceTableRows(records) {
         <td>${m.service_provider}</td>
         <td>UGX ${Number(m.cost).toLocaleString()}</td>
         <td>${m.service_date}</td>
+        <td>${m.expected_completion_date ? `<span style="${readyForReview ? 'color:#c53030;font-weight:600;' : ''}">${m.expected_completion_date}</span>` : 'N/A'}</td>
         <td>
           <div>${m.next_service_date || 'N/A'}</div>
           ${daysInfo}
@@ -1653,6 +1709,21 @@ async function completeMaintenancePrompt(maintenanceId, assetId) {
   document.getElementById('complete-maint-asset-id').textContent = maintenance.asset_id;
   document.getElementById('complete-maint-asset-name').textContent = maintenance.asset_name;
   document.getElementById('complete-maint-date').value = new Date().toISOString().split('T')[0];
+
+  // Give the manager the timing context that led to this review: how long
+  // the job was expected to take, and whether it's now overdue against that estimate.
+  const timingNote = document.getElementById('complete-maint-timing-note');
+  if (timingNote) {
+    if (maintenance.expected_completion_date) {
+      const today = new Date().toISOString().split('T')[0];
+      const isOverdue = maintenance.expected_completion_date < today;
+      timingNote.innerHTML = isOverdue
+        ? `<span style="color:#c53030;font-weight:600;">Estimated completion was ${maintenance.expected_completion_date} — this is now overdue against that estimate.</span>`
+        : `Estimated completion date: <strong>${maintenance.expected_completion_date}</strong>.`;
+    } else {
+      timingNote.textContent = '';
+    }
+  }
   
   // Load users for assignment dropdown and try to pre-select last custodian
   try {
@@ -2669,6 +2740,7 @@ async function openRecordMaintenanceModal() {
   assetSelect.innerHTML = '<option value="">Loading assets...</option>';
   
   openModal('modal-record-maintenance');
+  updateExpectedCompletionHint();
   
   try {
     const res = await fetch('/api/assets');
@@ -2682,12 +2754,33 @@ async function openRecordMaintenanceModal() {
   }
 }
 
+// Shows the manager, in plain language, exactly which date their estimated
+// duration works out to, so "how long will it take" has a concrete answer
+// before the ticket is even opened.
+function updateExpectedCompletionHint() {
+  const hint = document.getElementById('maint-expected-completion-hint');
+  if (!hint) return;
+  const dateVal = document.getElementById('maint-date').value;
+  const durationVal = parseInt(document.getElementById('maint-duration').value, 10);
+  
+  if (!dateVal || !durationVal || durationVal < 1) {
+    hint.textContent = 'This asset will be flagged for your review once this many days have passed.';
+    return;
+  }
+  
+  const expected = new Date(dateVal + 'T00:00:00');
+  expected.setDate(expected.getDate() + durationVal);
+  const expectedStr = expected.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  hint.textContent = `Expected completion: ${expectedStr}. You'll be notified to review this asset from that date.`;
+}
+
 async function submitMaintenanceEvent(e) {
   e.preventDefault();
   const payload = {
     assetId: document.getElementById('maint-asset-select').value,
     serviceProvider: document.getElementById('maint-provider').value,
     serviceDate: document.getElementById('maint-date').value,
+    estimatedDurationDays: document.getElementById('maint-duration').value,
     nextServiceDate: document.getElementById('maint-next-date').value || null,
     cost: document.getElementById('maint-cost').value,
     description: document.getElementById('maint-desc').value
@@ -2976,6 +3069,12 @@ async function submitResetPassword(e) {
 }
 
 // ================= NOTIFICATION ENGINE =================
+
+// Tracks which "ready for review" maintenance IDs we've already popped a toast for,
+// so the manager gets notified once per job becoming ready, not on every poll.
+let notifiedReadyMaintenanceIds = new Set();
+let alertsPollingStarted = false;
+
 async function loadUpcomingAlerts() {
   const badge = document.getElementById('alerts-indicator');
   const countSpan = document.getElementById('alerts-count');
@@ -2985,12 +3084,25 @@ async function loadUpcomingAlerts() {
     const res = await fetch('/api/reports/dashboard');
     if (!res.ok) return;
     const data = await res.json();
-    
-    const count = data.upcomingMaintenance.length;
+
+    const readyItems = data.maintenanceReadyForReview || [];
+    const upcomingItems = data.upcomingMaintenance || [];
+    const count = readyItems.length + upcomingItems.length;
+
     if (count > 0) {
       badge.style.display = 'block';
       countSpan.textContent = count;
-      alertsList.innerHTML = data.upcomingMaintenance.map(m => `
+
+      const readyHtml = readyItems.map(m => `
+        <li>
+          <div class="alert-item-title text-danger">Maintenance Ready for Review</div>
+          <div class="alert-item-detail">
+            Asset <strong>${m.asset_id}</strong> (${m.asset_name}) was expected to finish servicing with ${m.service_provider} by <strong>${m.expected_completion_date}</strong>. Decide whether to close it out or extend it.
+          </div>
+        </li>
+      `).join('');
+
+      const upcomingHtml = upcomingItems.map(m => `
         <li>
           <div class="alert-item-title">Maintenance Due!</div>
           <div class="alert-item-detail">
@@ -2998,11 +3110,32 @@ async function loadUpcomingAlerts() {
           </div>
         </li>
       `).join('');
+
+      alertsList.innerHTML = readyHtml + upcomingHtml;
     } else {
       badge.style.display = 'none';
       alertsList.innerHTML = '<li class="dropdown-empty">No critical alerts.</li>';
     }
+
+    // Pop a toast the moment a job newly crosses into "ready for review", so the
+    // asset manager is notified proactively rather than only on-demand.
+    if (currentUser && currentUser.role === 'AssetManager') {
+      readyItems.forEach(m => {
+        if (!notifiedReadyMaintenanceIds.has(m.id)) {
+          notifiedReadyMaintenanceIds.add(m.id);
+          showToast(`Maintenance for asset ${m.asset_id} (${m.asset_name}) is ready for your review.`, 'info');
+        }
+      });
+    }
   } catch(e) {}
+}
+
+// Starts periodic polling so notifications appear while the manager stays logged
+// in, without requiring a manual refresh of the page.
+function startAlertsPolling() {
+  if (alertsPollingStarted) return;
+  alertsPollingStarted = true;
+  setInterval(loadUpcomingAlerts, 60000);
 }
 
 // ================= TOAST ALERTS HELPER =================

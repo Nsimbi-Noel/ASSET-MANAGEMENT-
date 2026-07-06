@@ -543,6 +543,8 @@ function listMaintenance() {
     SELECT m.*, a.name as asset_name, a.type as asset_type, a.status as asset_status,
            CASE 
              WHEN m.completed = 1 THEN 'Completed'
+             WHEN m.expected_completion_date IS NOT NULL AND date(m.expected_completion_date) < date('now') THEN 'Ready for Review'
+             WHEN m.expected_completion_date IS NOT NULL AND date(m.expected_completion_date) = date('now') THEN 'Due Today'
              WHEN date(m.next_service_date) < date('now') THEN 'Overdue'
              WHEN date(m.service_date) <= date('now') THEN 'In Progress'
              ELSE 'Scheduled'
@@ -554,33 +556,41 @@ function listMaintenance() {
   return query.all();
 }
 
-function recordMaintenance(reqUser, { assetId, serviceProvider, description, cost, serviceDate, nextServiceDate }) {
+function recordMaintenance(reqUser, { assetId, serviceProvider, description, cost, serviceDate, nextServiceDate, estimatedDurationDays }) {
   if (reqUser.role !== 'AssetManager') throw new Error('Unauthorized');
   
   if (!assetId || !serviceProvider || !description || !cost || !serviceDate) {
     throw new Error('Asset ID, service provider, description, cost, and service date are required');
+  }
+
+  if (!estimatedDurationDays || isNaN(estimatedDurationDays) || parseInt(estimatedDurationDays, 10) < 1) {
+    throw new Error('Estimated duration (in days) is required so we know when to flag this job for review');
   }
   
   const asset = getAsset(assetId);
   if (asset.status === 'Disposed') {
     throw new Error('Cannot schedule maintenance on a disposed asset');
   }
+
+  const durationDays = parseInt(estimatedDurationDays, 10);
   
   db.exec('BEGIN TRANSACTION');
   try {
-    // 1. Create maintenance row
+    // 1. Create maintenance row. expected_completion_date is derived server-side from the
+    // service date + the manager's estimated duration, so we can reliably flag it later
+    // regardless of what the client sends.
     const insert = db.prepare(`
-      INSERT INTO maintenance (asset_id, service_provider, description, cost, service_date, next_service_date, completed)
-      VALUES (?, ?, ?, ?, ?, ?, 0)
+      INSERT INTO maintenance (asset_id, service_provider, description, cost, service_date, next_service_date, estimated_duration_days, expected_completion_date, completed)
+      VALUES (?, ?, ?, ?, ?, ?, ?, date(?, '+' || ? || ' days'), 0)
     `);
-    const result = insert.run(assetId, serviceProvider, description, parseFloat(cost), serviceDate, nextServiceDate);
+    const result = insert.run(assetId, serviceProvider, description, parseFloat(cost), serviceDate, nextServiceDate, durationDays, serviceDate, durationDays);
     
     // 2. Set asset status to 'Under Maintenance'
     const updateAsset = db.prepare("UPDATE assets SET status = 'Under Maintenance' WHERE id = ?");
     updateAsset.run(assetId);
     
     // 3. Log audit
-    logAudit(reqUser.id, reqUser.username, 'CREATE', 'maintenance', String(result.lastInsertRowid), `Opened maintenance for asset ${assetId}`);
+    logAudit(reqUser.id, reqUser.username, 'CREATE', 'maintenance', String(result.lastInsertRowid), `Opened maintenance for asset ${assetId}, expected to take ${durationDays} day(s)`);
     
     db.exec('COMMIT');
     return { success: true, maintenanceId: result.lastInsertRowid };
@@ -834,6 +844,22 @@ function getDashboardMetrics() {
   `);
   const upcomingMaintenance = maintenanceQuery.all();
 
+  // 6b. Maintenance ready for review: open jobs whose manager-estimated completion
+  // window (service_date + estimated_duration_days) has been reached or passed.
+  // This is what actually notifies the manager to decide the asset's next status,
+  // as distinct from "upcoming/overdue" which is about future scheduled servicing.
+  const readyForReviewQuery = db.prepare(`
+    SELECT m.*, a.name as asset_name,
+           CAST(julianday('now') - julianday(m.expected_completion_date) AS INTEGER) as days_overdue
+    FROM maintenance m
+    JOIN assets a ON m.asset_id = a.id
+    WHERE m.completed = 0
+      AND m.expected_completion_date IS NOT NULL
+      AND date(m.expected_completion_date) <= date('now')
+    ORDER BY m.expected_completion_date ASC
+  `);
+  const maintenanceReadyForReview = readyForReviewQuery.all();
+
   // 7. Asset acquisition trend (assets added per month)
   const trendQuery = db.prepare(`
     SELECT strftime('%Y-%m', acquisition_date) as month, COUNT(*) as count
@@ -864,6 +890,7 @@ function getDashboardMetrics() {
     assignmentRatio,
     totalValuation: costVal,
     upcomingMaintenance,
+    maintenanceReadyForReview,
     acquisitionTrend,
     assetAvailability
   };

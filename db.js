@@ -88,6 +88,8 @@ function initDb() {
       cost REAL NOT NULL,
       service_date TEXT NOT NULL,
       next_service_date TEXT,
+      estimated_duration_days INTEGER, -- How many days the manager expects servicing to take
+      expected_completion_date TEXT, -- service_date + estimated_duration_days, used to flag readiness
       completed INTEGER DEFAULT 0, -- 0 = No, 1 = Yes
       completion_date TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -185,6 +187,20 @@ try {
 }
 try {
   db.exec("ALTER TABLE requests ADD COLUMN received_status TEXT DEFAULT 'Pending'");
+} catch (e) {
+  // Column might already exist
+}
+
+// Migration: Ensure estimated_duration_days and expected_completion_date exist in maintenance table
+// so managers can state how long a servicing job should take, and the system can flag it
+// automatically once that window has passed.
+try {
+  db.exec("ALTER TABLE maintenance ADD COLUMN estimated_duration_days INTEGER");
+} catch (e) {
+  // Column might already exist
+}
+try {
+  db.exec("ALTER TABLE maintenance ADD COLUMN expected_completion_date TEXT");
 } catch (e) {
   // Column might already exist
 }
