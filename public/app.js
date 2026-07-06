@@ -328,7 +328,12 @@ async function renderDashboardView(container) {
     const res = await fetch('/api/reports/dashboard');
     if (!res.ok) throw new Error('Failed to fetch dashboard metrics');
     const data = await res.json();
-    
+
+    // Computed up front (not inside the onclick string) so it's evaluated now,
+    // while `data` is still in scope, rather than at click-time in the global
+    // scope where `data` would be undefined and silently break the handler.
+    const maintProgressStatus = data.maintenanceReadyForReview.length > 0 ? 'Ready for Review' : 'Active';
+
     container.innerHTML = `
       <!-- Metric Cards Grid: each card is a clickable shortcut into a pre-filtered view -->
       <div class="grid grid-4" style="margin-bottom: 2rem;">
@@ -359,7 +364,7 @@ async function renderDashboardView(container) {
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
           </div>
         </button>
-        <button type="button" class="metric-card metric-card-clickable card-maint" onclick="navigateTo('maintenance', { progressStatus: data.maintenanceReadyForReview.length > 0 ? 'Ready for Review' : 'Active' })" title="View active maintenance tickets in the Maintenance Log">
+        <button type="button" class="metric-card metric-card-clickable card-maint" onclick="navigateTo('maintenance', { progressStatus: '${maintProgressStatus}' })" title="View active maintenance tickets in the Maintenance Log">
           <div class="metric-info">
             <span class="metric-title">Under Maintenance</span>
             <span class="metric-value">${data.counts.UnderMaintenance}</span>
