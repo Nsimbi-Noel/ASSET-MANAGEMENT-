@@ -12,6 +12,25 @@ let cacheData = {
   audits: []
 };
 
+// Filter State for Card-Driven Navigation
+let filterState = {
+  status: null,
+  type: null,
+  maintenanceStatus: null
+};
+
+// Navigate to a view with optional filter criteria
+function navigateWithFilter(view, filterCriteria = {}) {
+  // Store filter state
+  filterState = {
+    status: filterCriteria.status || null,
+    type: filterCriteria.type || null,
+    maintenanceStatus: filterCriteria.maintenanceStatus || null
+  };
+  // Navigate to the view
+  navigateTo(view);
+}
+
 // Document Ready
 document.addEventListener('DOMContentLoaded', () => {
   initApp();
@@ -246,6 +265,12 @@ function navigateTo(view) {
   };
   document.getElementById('view-title').textContent = titleMap[view] || 'Asset Management System';
   
+  // Show/hide return to dashboard button (hide on dashboard, show on other views)
+  const returnBtn = document.getElementById('return-to-dashboard-btn');
+  if (returnBtn) {
+    returnBtn.style.display = view === 'dashboard' ? 'none' : 'inline-flex';
+  }
+  
   // Render View content
   renderView(view);
 
@@ -301,10 +326,15 @@ async function renderDashboardView(container) {
     if (!res.ok) throw new Error('Failed to fetch dashboard metrics');
     const data = await res.json();
     
+    // Determine if cards should be clickable (only for non-employees)
+    const isEmployee = currentUser && currentUser.role === 'Employee';
+    const cardClickHandler = isEmployee ? '' : 'onclick="navigateWithFilter('register', {})"';
+    const cardCursor = isEmployee ? '' : 'cursor: pointer;';
+    
     container.innerHTML = `
       <!-- Metric Cards Grid -->
       <div class="grid grid-4" style="margin-bottom: 2rem;">
-        <div class="metric-card card-total">
+        <div class="metric-card card-total" ${cardClickHandler} style="${cardCursor}">
           <div class="metric-info">
             <span class="metric-title">Total Active Assets</span>
             <span class="metric-value">${data.counts.Active + data.counts.InStorage + data.counts.UnderMaintenance}</span>
@@ -313,7 +343,7 @@ async function renderDashboardView(container) {
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9m3 14H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8"/></svg>
           </div>
         </div>
-        <div class="metric-card card-active">
+        <div class="metric-card card-active" ${isEmployee ? '' : 'onclick="navigateWithFilter('register', { status: 'Active' })"'} style="${cardCursor}">
           <div class="metric-info">
             <span class="metric-title">Assigned (Active)</span>
             <span class="metric-value">${data.assignmentRatio.assigned || 0}</span>
@@ -322,7 +352,7 @@ async function renderDashboardView(container) {
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
           </div>
         </div>
-        <div class="metric-card card-storage">
+        <div class="metric-card card-storage" ${isEmployee ? '' : 'onclick="navigateWithFilter('register', { status: 'In Storage' })"'} style="${cardCursor}">
           <div class="metric-info">
             <span class="metric-title">In Storage</span>
             <span class="metric-value">${data.counts.InStorage}</span>
@@ -331,7 +361,7 @@ async function renderDashboardView(container) {
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
           </div>
         </div>
-        <div class="metric-card card-maint">
+        <div class="metric-card card-maint" ${isEmployee ? '' : 'onclick="navigateWithFilter('maintenance', { maintenanceStatus: 'In Progress' })"'} style="${cardCursor}">
           <div class="metric-info">
             <span class="metric-title">Under Maintenance</span>
             <span class="metric-value">${data.counts.UnderMaintenance}</span>
@@ -748,6 +778,13 @@ async function renderRegisterView(container) {
     
     renderAssetTableRows(data);
     
+    // Apply filter state from dashboard card clicks
+    if (filterState.status) {
+      document.getElementById('asset-filter-status').value = filterState.status;
+      filterState.status = null; // Reset after applying
+      filterAssetTable();
+    }
+    
   } catch (err) {
     container.innerHTML = `<div class="warning-banner">${err.message}</div>`;
   }
@@ -874,9 +911,7 @@ async function renderMyAssetsView(container) {
       <div class="view-actions-bar">
         <h3>My Assets Dashboard</h3>
         <div>
-          <button class="btn btn-primary" onclick="openCreateRequestModal()">
-            Submit New Request
-          </button>
+          <!-- Submit New Request button moved to Requests page only -->
         </div>
       </div>
 
@@ -1361,6 +1396,13 @@ async function loadMaintenanceTable() {
     }
     
     renderMaintenanceTableRows(records);
+    
+    // Apply filter state from dashboard card clicks
+    if (filterState.maintenanceStatus) {
+      document.getElementById('maint-filter-status').value = filterState.maintenanceStatus;
+      filterState.maintenanceStatus = null; // Reset after applying
+      filterMaintenanceTable();
+    }
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="8" class="table-empty text-danger">${err.message}</td></tr>`;
   }
@@ -1377,7 +1419,7 @@ function renderMaintenanceSummary(records) {
   };
   
   summary.innerHTML = `
-    <div class="metric-card card-maint">
+    <div class="metric-card card-maint" onclick="filterMaintenanceByStatus('Overdue')" style="cursor: pointer;">
       <div class="metric-info">
         <span class="metric-title">Overdue</span>
         <span class="metric-value">${counts.overdue}</span>
@@ -1389,7 +1431,7 @@ function renderMaintenanceSummary(records) {
       </div>
     </div>
     
-    <div class="metric-card card-maint">
+    <div class="metric-card card-maint" onclick="filterMaintenanceByStatus('In Progress')" style="cursor: pointer;">
       <div class="metric-info">
         <span class="metric-title">In Progress</span>
         <span class="metric-value">${counts.inProgress}</span>
@@ -1401,7 +1443,7 @@ function renderMaintenanceSummary(records) {
       </div>
     </div>
     
-    <div class="metric-card card-storage">
+    <div class="metric-card card-storage" onclick="filterMaintenanceByStatus('Scheduled')" style="cursor: pointer;">
       <div class="metric-info">
         <span class="metric-title">Scheduled</span>
         <span class="metric-value">${counts.scheduled}</span>
@@ -1413,7 +1455,7 @@ function renderMaintenanceSummary(records) {
       </div>
     </div>
     
-    <div class="metric-card card-active">
+    <div class="metric-card card-active" onclick="filterMaintenanceByStatus('Completed')" style="cursor: pointer;">
       <div class="metric-info">
         <span class="metric-title">Completed</span>
         <span class="metric-value">${counts.completed}</span>
@@ -2988,3 +3030,13 @@ function labelTableCells() {
     requestAnimationFrame(labelTableCells);
   }).observe(vp, { childList: true, subtree: true });
 })();
+
+// ================= MAINTENANCE FILTER HELPER =================
+// Helper function to filter maintenance table by status when clicking maintenance summary cards
+function filterMaintenanceByStatus(status) {
+  const filterSelect = document.getElementById('maint-filter-status');
+  if (filterSelect) {
+    filterSelect.value = status;
+    filterMaintenanceTable();
+  }
+}

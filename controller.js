@@ -834,9 +834,9 @@ function getDashboardMetrics() {
   `);
   const upcomingMaintenance = maintenanceQuery.all();
 
-  // 7. Asset acquisition trend (assets added per month)
+  // 7. Asset acquisition trend (assets added per day for more detailed curvature)
   const trendQuery = db.prepare(`
-    SELECT strftime('%Y-%m', acquisition_date) as month, COUNT(*) as count
+    SELECT strftime('%Y-%m-%d', acquisition_date) as month, COUNT(*) as count
     FROM assets
     WHERE acquisition_date IS NOT NULL
     GROUP BY month
