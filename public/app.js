@@ -12,7 +12,6 @@ let cacheData = {
   audits: []
 };
 
-<<<<<<< HEAD
 // Filter State for Card-Driven Navigation
 let filterState = {
   status: null,
@@ -31,7 +30,6 @@ function navigateWithFilter(view, filterCriteria = {}) {
   // Navigate to the view
   navigateTo(view);
 }
-=======
 // Holds a one-time filter to apply to the next view we navigate into
 // (e.g. clicking a dashboard metric card jumps to a view pre-filtered
 // to match that metric). Consumed and cleared by the destination view's
@@ -41,7 +39,6 @@ let pendingViewFilter = null;
 // (e.g. by clicking a metric card). Drives the header's "Back to
 // Dashboard" shortcut so the user doesn't need the sidebar to return.
 let cameFromDashboard = false;
->>>>>>> 5c3318f4db36e3752d5ede700ee9fe3d0cd9955a
 
 // Document Ready
 document.addEventListener('DOMContentLoaded', () => {
@@ -355,21 +352,18 @@ async function renderDashboardView(container) {
     const res = await fetch('/api/reports/dashboard');
     if (!res.ok) throw new Error('Failed to fetch dashboard metrics');
     const data = await res.json();
-<<<<<<< HEAD
     
     // Determine if cards should be clickable (only for non-employees)
     const isEmployee = currentUser && currentUser.role === 'Employee';
     const cardClickHandler = isEmployee ? '' : 'onclick="navigateWithFilter('register', {})"';
     const cardCursor = isEmployee ? '' : 'cursor: pointer;';
     
-=======
 
     // Computed up front (not inside the onclick string) so it's evaluated now,
     // while `data` is still in scope, rather than at click-time in the global
     // scope where `data` would be undefined and silently break the handler.
     const maintProgressStatus = data.maintenanceReadyForReview.length > 0 ? 'Ready for Review' : 'Active';
 
->>>>>>> 5c3318f4db36e3752d5ede700ee9fe3d0cd9955a
     container.innerHTML = `
       <!-- Metric Cards Grid: each card is a clickable shortcut into a pre-filtered view -->
       <div class="grid grid-4" style="margin-bottom: 2rem;">
@@ -1580,9 +1574,6 @@ function renderMaintenanceSummary(records) {
   // Each card is clickable and instantly filters the table below it,
   // mirroring the same status options as the "All Statuses" dropdown.
   summary.innerHTML = `
-<<<<<<< HEAD
-    <div class="metric-card card-maint" onclick="filterMaintenanceByStatus('Overdue')" style="cursor: pointer;">
-=======
     <button type="button" class="metric-card metric-card-clickable card-maint" onclick="setMaintenanceStatusFilter('Ready for Review')" title="Show jobs whose estimated duration has elapsed and need a decision">
       <div class="metric-info">
         <span class="metric-title">Ready for Review</span>
@@ -1596,7 +1587,6 @@ function renderMaintenanceSummary(records) {
     </button>
 
     <button type="button" class="metric-card metric-card-clickable card-maint" onclick="setMaintenanceStatusFilter('Overdue')" title="Show overdue maintenance tickets">
->>>>>>> 5c3318f4db36e3752d5ede700ee9fe3d0cd9955a
       <div class="metric-info">
         <span class="metric-title">Overdue</span>
         <span class="metric-value">${counts.overdue}</span>
@@ -1608,11 +1598,7 @@ function renderMaintenanceSummary(records) {
       </div>
     </button>
     
-<<<<<<< HEAD
-    <div class="metric-card card-maint" onclick="filterMaintenanceByStatus('In Progress')" style="cursor: pointer;">
-=======
     <button type="button" class="metric-card metric-card-clickable card-maint" onclick="setMaintenanceStatusFilter('In Progress')" title="Show in-progress maintenance tickets">
->>>>>>> 5c3318f4db36e3752d5ede700ee9fe3d0cd9955a
       <div class="metric-info">
         <span class="metric-title">In Progress</span>
         <span class="metric-value">${counts.inProgress}</span>
@@ -1624,11 +1610,7 @@ function renderMaintenanceSummary(records) {
       </div>
     </button>
     
-<<<<<<< HEAD
-    <div class="metric-card card-storage" onclick="filterMaintenanceByStatus('Scheduled')" style="cursor: pointer;">
-=======
     <button type="button" class="metric-card metric-card-clickable card-storage" onclick="setMaintenanceStatusFilter('Scheduled')" title="Show scheduled maintenance tickets">
->>>>>>> 5c3318f4db36e3752d5ede700ee9fe3d0cd9955a
       <div class="metric-info">
         <span class="metric-title">Scheduled</span>
         <span class="metric-value">${counts.scheduled}</span>
@@ -1640,11 +1622,7 @@ function renderMaintenanceSummary(records) {
       </div>
     </button>
     
-<<<<<<< HEAD
-    <div class="metric-card card-active" onclick="filterMaintenanceByStatus('Completed')" style="cursor: pointer;">
-=======
     <button type="button" class="metric-card metric-card-clickable card-active" onclick="setMaintenanceStatusFilter('Completed')" title="Show completed maintenance tickets">
->>>>>>> 5c3318f4db36e3752d5ede700ee9fe3d0cd9955a
       <div class="metric-info">
         <span class="metric-title">Completed</span>
         <span class="metric-value">${counts.completed}</span>
