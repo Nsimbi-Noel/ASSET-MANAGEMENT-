@@ -105,14 +105,16 @@ button, input, select, textarea {
 .grid-2 { grid-template-columns: repeat(2, 1fr); }
 .grid-3 { grid-template-columns: repeat(3, 1fr); }
 .grid-4 { grid-template-columns: repeat(4, 1fr); }
+.grid-5 { grid-template-columns: repeat(5, 1fr); }
 
 @media (max-width: 992px) {
   .grid-4 { grid-template-columns: repeat(2, 1fr); }
   .grid-3 { grid-template-columns: repeat(2, 1fr); }
+  .grid-5 { grid-template-columns: repeat(3, 1fr); }
 }
 
 @media (max-width: 768px) {
-  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .grid-2, .grid-3, .grid-4, .grid-5 { grid-template-columns: 1fr; }
 }
 
 .text-right { text-align: right; }
@@ -362,6 +364,17 @@ button, input, select, textarea {
 .form-group textarea {
   height: 100px;
   resize: vertical;
+}
+
+.form-hint {
+  display: block;
+  margin-top: 0.4rem;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.text-danger {
+  color: var(--color-disposed);
 }
 
 .form-control-disabled {
@@ -715,6 +728,39 @@ button, input, select, textarea {
   text-overflow: ellipsis;
 }
 
+/* "Back to Dashboard" shortcut in the header — shown only when the
+   current view was reached directly from a dashboard metric card */
+.back-to-dashboard-btn {
+  display: none; /* toggled to inline-flex via JS when relevant */
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md, 8px);
+  background-color: var(--bg-color);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+.back-to-dashboard-btn:hover {
+  background-color: var(--ursb-blue-trans);
+  color: var(--ursb-blue);
+  border-color: var(--ursb-blue-light);
+}
+
+@media (max-width: 480px) {
+  .back-to-dashboard-btn span {
+    display: none; /* icon-only on very narrow screens */
+  }
+  .back-to-dashboard-btn {
+    padding: 0.4rem 0.5rem;
+  }
+}
+
 /* Hamburger button — visible only on mobile */
 .hamburger-btn {
   display: none;
@@ -927,6 +973,32 @@ button, input, select, textarea {
   box-shadow: var(--shadow-lg);
 }
 
+/* Clickable metric cards act as quick filters into other views */
+.metric-card-clickable {
+  cursor: pointer;
+  user-select: none;
+  text-align: left;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  border: none;
+  outline: none;
+}
+
+.metric-card-clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+  border-left-width: 6px;
+}
+
+.metric-card-clickable:focus-visible {
+  box-shadow: var(--shadow-lg), 0 0 0 3px rgba(38, 99, 235, 0.35);
+}
+
+.metric-card-clickable:active {
+  transform: translateY(0);
+}
+
 .metric-info {
   display: flex;
   flex-direction: column;
@@ -945,6 +1017,18 @@ button, input, select, textarea {
   font-size: 1.8rem;
   font-weight: 700;
   color: var(--text-primary);
+}
+
+.metric-subtext {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* Applied to a clickable metric card while it's the active table filter */
+.metric-card-selected {
+  box-shadow: var(--shadow-lg), inset 0 0 0 2px var(--ursb-blue);
+  border-left-width: 6px;
 }
 
 .metric-icon-box {

@@ -95,9 +95,16 @@ async function runTests() {
       description: 'Structural wheel replacement',
       cost: 150000,
       serviceDate: '2026-06-18',
-      nextServiceDate: '2026-12-18'
+      nextServiceDate: '2026-12-18',
+      estimatedDurationDays: 5
     });
     assert.ok(maintResult.success, 'Maintenance record should be successfully created');
+
+    // Verify expected_completion_date was derived from service_date + estimated duration
+    const maintRecords = controller.listMaintenance();
+    const createdMaintRecord = maintRecords.find(m => m.id === maintResult.maintenanceId);
+    assert.strictEqual(createdMaintRecord.expected_completion_date, '2026-06-23', 'Expected completion date should be service_date + estimated_duration_days');
+    console.log(`${green}✓ Expected completion date correctly derived from estimated duration.${reset}`);
     
     // Verify status toggled to Under Maintenance
     const maintAssetDetails = controller.getAsset(maintAsset.id);
@@ -178,12 +185,28 @@ async function runTests() {
         serviceProvider: 'Repair Tech',
         description: 'Test repair',
         cost: 10000,
-        serviceDate: '2026-06-18'
+        serviceDate: '2026-06-18',
+        estimatedDurationDays: 3
       });
       assert.fail('Should prevent maintenance on disposed asset');
     } catch (err) {
       assert.match(err.message, /disposed asset/, 'Should throw disposed error');
       console.log(`${green}✓ Correctly blocked maintenance on disposed asset.${reset}`);
+    }
+
+    // Test Rule: Estimated duration is required so a review notification can be scheduled
+    try {
+      controller.recordMaintenance(managerUser, {
+        assetId: maintAsset.id,
+        serviceProvider: 'Repair Tech',
+        description: 'Test repair without duration',
+        cost: 10000,
+        serviceDate: '2026-06-18'
+      });
+      assert.fail('Should require an estimated duration');
+    } catch (err) {
+      assert.match(err.message, /[Ee]stimated duration/, 'Should throw missing-duration error');
+      console.log(`${green}✓ Correctly required an estimated duration when logging maintenance.${reset}`);
     }
 
     // 6. Test Audit Logging
