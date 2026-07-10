@@ -17,19 +17,22 @@ let cacheData = {
 // to match that metric). Consumed and cleared by the destination view's
 // render function.
 let pendingViewFilter = null;
-// True when the current view was navigated to directly from the dashboard
-// (e.g. by clicking a metric card). Drives the header's "Back to
-// Dashboard" shortcut so the user doesn't need the sidebar to return.
-let cameFromDashboard = false;
 
 // Document Ready
 document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
+// Flag to prevent the session check from firing while a login is in progress,
+// which was causing the login-page reload loop when the form submitted and
+// showApp() was called before the browser had fully processed the session cookie.
+let loginInProgress = false;
+
 async function initApp() {
   setupEventListeners();
-  await checkSession();
+  if (!loginInProgress) {
+    await checkSession();
+  }
 }
 
 // Check Authentication Session
@@ -195,6 +198,8 @@ function initMaintenanceActionListeners() {
 // Handle Login
 async function handleLogin(e) {
   e.preventDefault();
+  loginInProgress = true;
+  
   const usernameInput = document.getElementById('login-username').value;
   const passwordInput = document.getElementById('login-password').value;
   const errorDiv = document.getElementById('login-error');
@@ -212,12 +217,21 @@ async function handleLogin(e) {
     if (res.ok) {
       currentUser = data.user;
       showToast('Logged in successfully!', 'success');
+      // Reset the form and clear the error before showing the app, to prevent
+      // any residual form state from causing issues if the user hits back.
+      document.getElementById('login-form').reset();
+      errorDiv.textContent = '';
       showApp();
+      // Release the lock after a short delay so any subsequent session checks
+      // (e.g. after a page refresh) can proceed normally.
+      setTimeout(() => { loginInProgress = false; }, 2000);
     } else {
       errorDiv.textContent = data.error || 'Authentication failed.';
+      loginInProgress = false;
     }
   } catch (err) {
     errorDiv.textContent = 'Server unreachable. Check connections.';
+    loginInProgress = false;
   }
 }
 
@@ -227,6 +241,7 @@ async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' });
   } catch(e) {}
   showToast('Logged out successfully.', 'info');
+  loginInProgress = false;
   showLogin();
 }
 
@@ -245,12 +260,10 @@ function navigateTo(view, filter = null) {
   pendingViewFilter = filter;
   activeView = view;
 
-  // Show the header's "Back to Dashboard" shortcut only when the user just
-  // came from the dashboard (e.g. clicked a metric card) and isn't already
-  // back on it, so they never have to reach for the sidebar to return.
-  cameFromDashboard = (previousView === 'dashboard' && view !== 'dashboard');
-  const backBtn = document.getElementById('back-to-dashboard-btn');
-  if (backBtn) backBtn.style.display = cameFromDashboard ? 'inline-flex' : 'none';
+  // Show the header's "Return to Dashboard" button on every page except the
+  // dashboard itself, so users can always navigate back without using the sidebar.
+  const backBtn = document.getElementById('return-to-dashboard-btn');
+  if (backBtn) backBtn.style.display = (view !== 'dashboard') ? 'inline-flex' : 'none';
   document.querySelectorAll('.nav-link').forEach(link => {
     if (link.getAttribute('data-view') === view) {
       link.classList.add('active');
@@ -497,7 +510,52 @@ async function renderDashboardView(container) {
   }
 }
 
-// Draw Asset Acquisition Trend Line Chart with Enhanced Styling
+// Group daily trend data into weekly buckets when there are too many points,
+// so the chart stays readable and the line has meaningful curvature instead of
+// a flat stair-step across dozens of 0-or-1 daily values.
+function _bucketTrendByWeek(trend) {
+  // If already weekly (has only ~7-day-spaced dates) or fewer than 15 points,
+  // return as-is.
+  if (trend.length <= 14) return trend;
+
+  const buckets = [];
+  let weekStart = null, weekEnd = null, weekCount = 0, weekLabel = '';
+
+  for (const entry of trend) {
+    // Treat t.month as a YYYY-MM-DD string from the backend.
+    const d = new Date(entry.month);
+    if (isNaN(d.getTime())) {
+      // Fallback: keep the raw value.
+      buckets.push(entry);
+      continue;
+    }
+    const dateStr = entry.month.substring(0, 10);
+    if (!weekStart) {
+      weekStart = d;
+      weekEnd = d;
+      weekCount = entry.count;
+      weekLabel = dateStr;
+      continue;
+    }
+    // If within 7 days of the bucket start, accumulate.
+    const diffDays = (d - weekStart) / (1000 * 60 * 60 * 24);
+    if (diffDays <= 7) {
+      weekEnd = d;
+      weekCount += entry.count;
+    } else {
+      buckets.push({ month: weekLabel, count: weekCount });
+      weekStart = d;
+      weekEnd = d;
+      weekCount = entry.count;
+      weekLabel = dateStr;
+    }
+  }
+  // Push the last bucket.
+  if (weekStart) buckets.push({ month: weekLabel, count: weekCount });
+  return buckets;
+}
+
+// Draw Asset Acquisition Trend Line Chart with Smooth Curves (bezier)
 function renderTrendChart(canvasId, trend) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
@@ -515,7 +573,11 @@ function renderTrendChart(canvasId, trend) {
 
   ctx.clearRect(0, 0, cssWidth, cssHeight);
 
-  if (!trend || trend.length === 0) {
+  // Bucket daily data into weekly chunks when there are many points, so the
+  // line has visible curvature rather than a flat stair-step.
+  const dataPoints = _bucketTrendByWeek(trend);
+
+  if (!dataPoints || dataPoints.length === 0) {
     ctx.font = '14px Outfit';
     ctx.fillStyle = '#718096';
     ctx.fillText('No acquisition data to display', 40, 100);
@@ -526,7 +588,7 @@ function renderTrendChart(canvasId, trend) {
   const chartWidth = cssWidth - padding.left - padding.right;
   const chartHeight = cssHeight - padding.top - padding.bottom;
 
-  const values = trend.map(t => t.count);
+  const values = dataPoints.map(t => t.count);
   const maxVal = Math.max(...values, 1);
   const minVal = 0;
 
@@ -556,7 +618,7 @@ function renderTrendChart(canvasId, trend) {
   for (let s = 0; s <= ySteps; s++) {
     const val = Math.round((maxVal / ySteps) * s);
     const y = cssHeight - padding.bottom - (val / maxVal) * chartHeight;
-    
+
     // Alternating gridline opacity for better readability
     ctx.strokeStyle = s % 2 === 0 ? '#e2e8f0' : '#f0f4f8';
     ctx.lineWidth = 1;
@@ -566,7 +628,7 @@ function renderTrendChart(canvasId, trend) {
     ctx.lineTo(cssWidth - padding.right, y);
     ctx.stroke();
     ctx.setLineDash([]);
-    
+
     // Y-axis label with background
     ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
     ctx.fillRect(2, y - 8, 30, 14);
@@ -575,9 +637,9 @@ function renderTrendChart(canvasId, trend) {
   }
 
   // Compute point coordinates
-  const stepX = trend.length > 1 ? chartWidth / (trend.length - 1) : 0;
-  const points = trend.map((t, i) => {
-    const x = padding.left + (trend.length > 1 ? stepX * i : chartWidth / 2);
+  const stepX = dataPoints.length > 1 ? chartWidth / (dataPoints.length - 1) : 0;
+  const points = dataPoints.map((t, i) => {
+    const x = padding.left + (dataPoints.length > 1 ? stepX * i : chartWidth / 2);
     const y = cssHeight - padding.bottom - ((t.count - minVal) / maxVal) * chartHeight;
     return { x, y, label: t.month, value: t.count };
   });
@@ -588,32 +650,71 @@ function renderTrendChart(canvasId, trend) {
   gradient.addColorStop(0.5, 'rgba(30, 91, 168, 0.15)');
   gradient.addColorStop(1, 'rgba(10, 68, 142, 0.02)');
 
-  // Fill area under line with gradient
+  // Fill area under SMOOTH line with gradient
   ctx.beginPath();
   ctx.moveTo(points[0].x, cssHeight - padding.bottom);
-  points.forEach(p => ctx.lineTo(p.x, p.y));
+  if (points.length === 1) {
+    ctx.lineTo(points[0].x, points[0].y);
+  } else if (points.length === 2) {
+    // Straight line for 2 points
+    ctx.lineTo(points[0].x, points[0].y);
+    ctx.lineTo(points[1].x, points[1].y);
+  } else {
+    // Draw smooth bezier curve through all points
+    ctx.lineTo(points[0].x, points[0].y);
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = points[Math.max(i - 1, 0)];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = points[Math.min(i + 2, points.length - 1)];
+
+      const cp1x = p1.x + (p2.x - p0.x) / 6;
+      const cp1y = p1.y + (p2.y - p0.y) / 6;
+      const cp2x = p2.x - (p3.x - p1.x) / 6;
+      const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+      ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+    }
+  }
   ctx.lineTo(points[points.length - 1].x, cssHeight - padding.bottom);
   ctx.closePath();
   ctx.fillStyle = gradient;
   ctx.fill();
 
-  // Draw line with enhanced shadow effect
+  // Draw SMOOTH line with enhanced shadow effect
   ctx.shadowColor = 'rgba(10, 68, 142, 0.25)';
   ctx.shadowBlur = 8;
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 3;
-  
+
   // Create gradient for line color
   const lineGradient = ctx.createLinearGradient(points[0].x, 0, points[points.length - 1].x, 0);
   lineGradient.addColorStop(0, '#0a448e');
   lineGradient.addColorStop(0.5, '#1e5ba8');
   lineGradient.addColorStop(1, '#2d7ac4');
-  
+
   ctx.beginPath();
-  points.forEach((p, i) => {
-    if (i === 0) ctx.moveTo(p.x, p.y);
-    else ctx.lineTo(p.x, p.y);
-  });
+  if (points.length === 1) {
+    ctx.moveTo(points[0].x, points[0].y);
+  } else if (points.length === 2) {
+    ctx.moveTo(points[0].x, points[0].y);
+    ctx.lineTo(points[1].x, points[1].y);
+  } else {
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = points[Math.max(i - 1, 0)];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = points[Math.min(i + 2, points.length - 1)];
+
+      const cp1x = p1.x + (p2.x - p0.x) / 6;
+      const cp1y = p1.y + (p2.y - p0.y) / 6;
+      const cp2x = p2.x - (p3.x - p1.x) / 6;
+      const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+      ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+    }
+  }
   ctx.strokeStyle = lineGradient;
   ctx.lineWidth = 4;
   ctx.lineCap = 'round';
@@ -654,7 +755,7 @@ function renderTrendChart(canvasId, trend) {
     ctx.fillStyle = '#1a202c';
     ctx.textAlign = 'center';
     const labelY = p.y - 20;
-    
+
     // Background for label with shadow
     ctx.shadowColor = 'rgba(0, 0, 0, 0.1)';
     ctx.shadowBlur = 3;
@@ -662,22 +763,23 @@ function renderTrendChart(canvasId, trend) {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
     ctx.fillRect(p.x - 18, labelY - 11, 36, 18);
     ctx.shadowColor = 'transparent';
-    
+
     // Border for label
     ctx.strokeStyle = 'rgba(10, 68, 142, 0.15)';
     ctx.lineWidth = 1;
     ctx.strokeRect(p.x - 18, labelY - 11, 36, 18);
-    
+
     // Label text
     ctx.fillStyle = '#0a448e';
     ctx.font = 'bold 11px Outfit';
     ctx.fillText(p.value, p.x, labelY + 3);
 
-    // Month label below axis with improved styling
+    // Date label below axis — show MM-DD for weekly buckets, YY-MM-DD for daily
     ctx.font = '10px Outfit';
     ctx.fillStyle = '#4a5568';
-    const shortLabel = p.label ? p.label.substring(2) : ''; // YY-MM
-    ctx.fillText(shortLabel, p.x, cssHeight - padding.bottom + 20);
+    const label = p.label ? p.label.substring(0, 10) : ''; // YYYY-MM-DD
+    const displayLabel = label.length >= 10 ? label.substring(5) : label.substring(2); // MM-DD or YY-MM
+    ctx.fillText(displayLabel, p.x, cssHeight - padding.bottom + 20);
   });
   ctx.textAlign = 'left';
 }
@@ -948,10 +1050,6 @@ async function renderMyAssetsView(container) {
     // Filter requests to only show those for current user
     const myRequests = allRequests.filter(r => r.requested_by === currentUser.id);
     
-    // Cache for client-side filtering when a metric card is clicked, and
-    // reset any filter selection from a previous visit to this view.
-    myAssetsViewData = { assignments: myAssignments, requests: myRequests };
-    myAssetsActiveFilter = '';
     
     // Calculate stats
     const totalAssigned = myAssignments.length;
@@ -967,16 +1065,11 @@ async function renderMyAssetsView(container) {
     container.innerHTML = `
       <div class="view-actions-bar">
         <h3>My Assets Dashboard</h3>
-        <div>
-          <button class="btn btn-primary" onclick="openCreateRequestModal()">
-            Submit New Request
-          </button>
-        </div>
       </div>
 
-      <!-- My Assets Summary Cards: click a card to filter the table below it -->
+      <!-- My Assets Summary Cards: display-only stats (not interactive for employees) -->
       <div class="grid grid-4" style="margin-bottom: 2rem;">
-        <button type="button" id="my-assets-card-all" class="metric-card metric-card-clickable card-total" onclick="filterMyAssetsTable('')" title="Show everything: assigned and received assets, plus all your requests">
+        <div class="metric-card card-total" title="Total Assets Held">
           <div class="metric-info">
             <span class="metric-title">Total Assets Held</span>
             <span class="metric-value">${totalHeld}</span>
@@ -984,8 +1077,8 @@ async function renderMyAssetsView(container) {
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9m3 14H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8"/></svg>
           </div>
-        </button>
-        <button type="button" id="my-assets-card-assigned" class="metric-card metric-card-clickable card-active" onclick="filterMyAssetsTable('assigned')" title="Show only assets directly assigned to you">
+        </div>
+        <div class="metric-card card-active" title="Directly Assigned">
           <div class="metric-info">
             <span class="metric-title">Directly Assigned</span>
             <span class="metric-value">${totalAssigned}</span>
@@ -994,8 +1087,8 @@ async function renderMyAssetsView(container) {
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/></svg>
           </div>
-        </button>
-        <button type="button" id="my-assets-card-received" class="metric-card metric-card-clickable card-storage" onclick="filterMyAssetsTable('received')" title="Show requests you've received the asset for">
+        </div>
+        <div class="metric-card card-storage" title="Received via Request">
           <div class="metric-info">
             <span class="metric-title">Received via Request</span>
             <span class="metric-value">${receivedRequests.length}</span>
@@ -1003,8 +1096,8 @@ async function renderMyAssetsView(container) {
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           </div>
-        </button>
-        <button type="button" id="my-assets-card-pending" class="metric-card metric-card-clickable card-maint" onclick="filterMyAssetsTable('pending')" title="Show requests still awaiting a decision">
+        </div>
+        <div class="metric-card card-maint" title="Pending Requests">
           <div class="metric-info">
             <span class="metric-title">Pending Requests</span>
             <span class="metric-value">${pendingRequests}</span>
@@ -1012,7 +1105,7 @@ async function renderMyAssetsView(container) {
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           </div>
-        </button>
+        </div>
       </div>
       
       <!-- Combined Assets Table -->
@@ -1043,42 +1136,6 @@ async function renderMyAssetsView(container) {
   } catch (err) {
     container.innerHTML = `<div class="warning-banner">${err.message}</div>`;
   }
-}
-
-// Applies the currently-selected metric card filter to the cached My Assets
-// data and re-renders the table - no re-fetch needed, so it's instant.
-function filterMyAssetsTable(type) {
-  // Clicking the already-active card toggles the filter back off.
-  myAssetsActiveFilter = (myAssetsActiveFilter === type) ? '' : type;
-  
-  ['all', 'assigned', 'received', 'pending'].forEach(key => {
-    const card = document.getElementById(`my-assets-card-${key}`);
-    if (!card) return;
-    const isSelected = (key === 'all' && myAssetsActiveFilter === '') || key === myAssetsActiveFilter;
-    card.classList.toggle('metric-card-selected', isSelected);
-  });
-  
-  let assignments = myAssetsViewData.assignments;
-  let requests = myAssetsViewData.requests;
-  
-  switch (myAssetsActiveFilter) {
-    case 'assigned':
-      requests = [];
-      break;
-    case 'received':
-      assignments = [];
-      requests = requests.filter(r => r.status === 'Approved' && r.received_status === 'Received');
-      break;
-    case 'pending':
-      assignments = [];
-      requests = requests.filter(r => r.status === 'Pending');
-      break;
-    default:
-      // No filter: show everything, same as the initial view load.
-      break;
-  }
-  
-  renderMyAssetsTableRows(assignments, requests, myAssetsActiveFilter !== '');
 }
 
 function renderMyAssetsTableRows(assignments, requests, isFiltered = false) {

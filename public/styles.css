@@ -728,10 +728,9 @@ button, input, select, textarea {
   text-overflow: ellipsis;
 }
 
-/* "Back to Dashboard" shortcut in the header — shown only when the
-   current view was reached directly from a dashboard metric card */
-.back-to-dashboard-btn {
-  display: none; /* toggled to inline-flex via JS when relevant */
+/* "Return to Dashboard" button in the header — always shown except on the
+   dashboard page itself, giving users a quick way back without the sidebar */
+#return-to-dashboard-btn {
   align-items: center;
   gap: 0.35rem;
   padding: 0.4rem 0.75rem;
@@ -746,17 +745,17 @@ button, input, select, textarea {
   flex-shrink: 0;
   transition: var(--transition);
 }
-.back-to-dashboard-btn:hover {
+#return-to-dashboard-btn:hover {
   background-color: var(--ursb-blue-trans);
   color: var(--ursb-blue);
   border-color: var(--ursb-blue-light);
 }
 
 @media (max-width: 480px) {
-  .back-to-dashboard-btn span {
+  #return-to-dashboard-btn span {
     display: none; /* icon-only on very narrow screens */
   }
-  .back-to-dashboard-btn {
+  #return-to-dashboard-btn {
     padding: 0.4rem 0.5rem;
   }
 }
