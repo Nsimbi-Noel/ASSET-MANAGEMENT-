@@ -370,7 +370,12 @@ const server = http.createServer(async (req, res) => {
           res.writeHead(404, { 'Content-Type': 'text/plain' });
           res.end('Page Not Found');
         } else {
-          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.writeHead(200, {
+            'Content-Type': 'text/html',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          });
           res.end(content);
         }
       });
@@ -380,13 +385,26 @@ const server = http.createServer(async (req, res) => {
     // Read and serve file
     const ext = path.extname(filePath).toLowerCase();
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-    
+
+    // App code (HTML/JS/CSS) must always be revalidated so a deployed fix is
+    // picked up on next load instead of silently being served from a stale
+    // browser cache (with no cache headers at all, browsers fall back to
+    // their own heuristics, which can hold on to old app.js for a long time).
+    // Images/fonts are fine to cache since their filenames/content don't change.
+    const noCacheExts = ['.html', '.js', '.css'];
+
     fs.readFile(filePath, (readErr, content) => {
       if (readErr) {
         res.writeHead(500, { 'Content-Type': 'text/plain' });
         res.end('Server Error');
       } else {
-        res.writeHead(200, { 'Content-Type': contentType });
+        const headers = { 'Content-Type': contentType };
+        if (noCacheExts.includes(ext)) {
+          headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+          headers['Pragma'] = 'no-cache';
+          headers['Expires'] = '0';
+        }
+        res.writeHead(200, headers);
         res.end(content);
       }
     });

@@ -12,24 +12,6 @@ let cacheData = {
   audits: []
 };
 
-// Filter State for Card-Driven Navigation
-let filterState = {
-  status: null,
-  type: null,
-  maintenanceStatus: null
-};
-
-// Navigate to a view with optional filter criteria
-function navigateWithFilter(view, filterCriteria = {}) {
-  // Store filter state
-  filterState = {
-    status: filterCriteria.status || null,
-    type: filterCriteria.type || null,
-    maintenanceStatus: filterCriteria.maintenanceStatus || null
-  };
-  // Navigate to the view
-  navigateTo(view);
-}
 // Holds a one-time filter to apply to the next view we navigate into
 // (e.g. clicking a dashboard metric card jumps to a view pre-filtered
 // to match that metric). Consumed and cleared by the destination view's
@@ -292,12 +274,6 @@ function navigateTo(view, filter = null) {
   };
   document.getElementById('view-title').textContent = titleMap[view] || 'Asset Management System';
   
-  // Show/hide return to dashboard button (hide on dashboard, show on other views)
-  const returnBtn = document.getElementById('return-to-dashboard-btn');
-  if (returnBtn) {
-    returnBtn.style.display = view === 'dashboard' ? 'none' : 'inline-flex';
-  }
-  
   // Render View content
   renderView(view);
 
@@ -352,12 +328,6 @@ async function renderDashboardView(container) {
     const res = await fetch('/api/reports/dashboard');
     if (!res.ok) throw new Error('Failed to fetch dashboard metrics');
     const data = await res.json();
-    
-    // Determine if cards should be clickable (only for non-employees)
-    const isEmployee = currentUser && currentUser.role === 'Employee';
-    const cardClickHandler = isEmployee ? '' : 'onclick="navigateWithFilter('register', {})"';
-    const cardCursor = isEmployee ? '' : 'cursor: pointer;';
-    
 
     // Computed up front (not inside the onclick string) so it's evaluated now,
     // while `data` is still in scope, rather than at click-time in the global
@@ -367,7 +337,7 @@ async function renderDashboardView(container) {
     container.innerHTML = `
       <!-- Metric Cards Grid: each card is a clickable shortcut into a pre-filtered view -->
       <div class="grid grid-4" style="margin-bottom: 2rem;">
-<div class="metric-card card-total" ${cardClickHandler} style="${cardCursor}" title="View all assets in the Asset Register">
+        <button type="button" class="metric-card metric-card-clickable card-total" onclick="navigateTo('register')" title="View all assets in the Asset Register">
           <div class="metric-info">
             <span class="metric-title">Total Active Assets</span>
             <span class="metric-value">${data.counts.Active + data.counts.InStorage + data.counts.UnderMaintenance}</span>
@@ -375,7 +345,8 @@ async function renderDashboardView(container) {
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9m3 14H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8"/></svg>
           </div>
-        <div class="metric-card card-active" ${isEmployee ? '' : 'onclick="navigateWithFilter(\'register\', { status: \'Active\' })"'} style="${cardCursor}" title="View assigned (active) assets in the Asset Register">
+        </button>
+        <button type="button" class="metric-card metric-card-clickable card-active" onclick="navigateTo('register', { status: 'Active' })" title="View assigned (active) assets in the Asset Register">
           <div class="metric-info">
             <span class="metric-title">Assigned (Active)</span>
             <span class="metric-value">${data.assignmentRatio.assigned || 0}</span>
@@ -383,7 +354,8 @@ async function renderDashboardView(container) {
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
           </div>
-        <div class="metric-card card-storage" ${isEmployee ? '' : 'onclick="navigateWithFilter(\'register\', { status: \'In Storage\' })"'} style="${cardCursor}" title="View in-storage assets in the Asset Register">
+        </button>
+        <button type="button" class="metric-card metric-card-clickable card-storage" onclick="navigateTo('register', { status: 'In Storage' })" title="View in-storage assets in the Asset Register">
           <div class="metric-info">
             <span class="metric-title">In Storage</span>
             <span class="metric-value">${data.counts.InStorage}</span>
@@ -391,7 +363,8 @@ async function renderDashboardView(container) {
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
           </div>
-        <div class="metric-card card-maint" ${isEmployee ? '' : `onclick="navigateWithFilter(\'maintenance\', { maintenanceStatus: \'${maintProgressStatus}\' })"`} style="${cardCursor}" title="View active maintenance tickets in the Maintenance Log">
+        </button>
+        <button type="button" class="metric-card metric-card-clickable card-maint" onclick="navigateTo('maintenance', { progressStatus: '${maintProgressStatus}' })" title="View active maintenance tickets in the Maintenance Log">
           <div class="metric-info">
             <span class="metric-title">Under Maintenance</span>
             <span class="metric-value">${data.counts.UnderMaintenance}</span>
@@ -850,13 +823,6 @@ async function renderRegisterView(container) {
       if (status || type) filterAssetTable();
     }
     
-    // Apply filter state from dashboard card clicks
-    if (filterState.status) {
-      document.getElementById('asset-filter-status').value = filterState.status;
-      filterState.status = null; // Reset after applying
-      filterAssetTable();
-    }
-    
   } catch (err) {
     container.innerHTML = `<div class="warning-banner">${err.message}</div>`;
   }
@@ -1002,7 +968,9 @@ async function renderMyAssetsView(container) {
       <div class="view-actions-bar">
         <h3>My Assets Dashboard</h3>
         <div>
-          <!-- Submit New Request button moved to Requests page only -->
+          <button class="btn btn-primary" onclick="openCreateRequestModal()">
+            Submit New Request
+          </button>
         </div>
       </div>
 
@@ -1548,13 +1516,6 @@ async function loadMaintenanceTable() {
     }
     
     renderMaintenanceTableRows(records);
-    
-    // Apply filter state from dashboard card clicks
-    if (filterState.maintenanceStatus) {
-      document.getElementById('maint-filter-status').value = filterState.maintenanceStatus;
-      filterState.maintenanceStatus = null; // Reset after applying
-      filterMaintenanceTable();
-    }
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="9" class="table-empty text-danger">${err.message}</td></tr>`;
   }
@@ -3292,13 +3253,3 @@ function labelTableCells() {
     requestAnimationFrame(labelTableCells);
   }).observe(vp, { childList: true, subtree: true });
 })();
-
-// ================= MAINTENANCE FILTER HELPER =================
-// Helper function to filter maintenance table by status when clicking maintenance summary cards
-function filterMaintenanceByStatus(status) {
-  const filterSelect = document.getElementById('maint-filter-status');
-  if (filterSelect) {
-    filterSelect.value = status;
-    filterMaintenanceTable();
-  }
-}
