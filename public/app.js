@@ -1020,15 +1020,7 @@ function exportAssetRegisterCSV() {
   document.body.removeChild(link);
 }
 
-// ================= VIEW: MY ASSETS (Personal Dashboard) =================
 // ================= VIEW: MY ASSETS =================
-
-// Holds the current user's assignments/requests for the My Assets view so
-// the metric cards can re-filter the table client-side without refetching.
-let myAssetsViewData = { assignments: [], requests: [] };
-// Which metric card is currently selected as a table filter: '', 'assigned',
-// 'received', or 'pending'.
-let myAssetsActiveFilter = '';
 
 async function renderMyAssetsView(container) {
   try {
@@ -1597,7 +1589,7 @@ function renderMaintenanceSummary(records) {
         <span class="metric-title">Ready for Review</span>
         <span class="metric-value">${counts.readyForReview}</span>
       </div>
-      <div class="metric-icon-box" style="background-color: #ffebee; color: #c53030;">
+      <div class="metric-icon-box">
         <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
         </svg>
@@ -1609,7 +1601,7 @@ function renderMaintenanceSummary(records) {
         <span class="metric-title">Overdue</span>
         <span class="metric-value">${counts.overdue}</span>
       </div>
-      <div class="metric-icon-box" style="background-color: #ffebee; color: #c53030;">
+      <div class="metric-icon-box">
         <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
         </svg>
@@ -1621,7 +1613,7 @@ function renderMaintenanceSummary(records) {
         <span class="metric-title">In Progress</span>
         <span class="metric-value">${counts.inProgress}</span>
       </div>
-      <div class="metric-icon-box" style="background-color: #fff3e0; color: #e65100;">
+      <div class="metric-icon-box">
         <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
         </svg>
@@ -1633,7 +1625,7 @@ function renderMaintenanceSummary(records) {
         <span class="metric-title">Scheduled</span>
         <span class="metric-value">${counts.scheduled}</span>
       </div>
-      <div class="metric-icon-box" style="background-color: #e3f2fd; color: #1565c0;">
+      <div class="metric-icon-box">
         <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
           <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5-7h4v2h-4zm0 4h4v2h-4zm-5-8h2v2h-2zm3 0h2v2h-2zm3 0h2v2h-2z"/>
         </svg>
@@ -1645,7 +1637,7 @@ function renderMaintenanceSummary(records) {
         <span class="metric-title">Completed</span>
         <span class="metric-value">${counts.completed}</span>
       </div>
-      <div class="metric-icon-box" style="background-color: #e8f5e9; color: #2e7d32;">
+      <div class="metric-icon-box">
         <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
         </svg>

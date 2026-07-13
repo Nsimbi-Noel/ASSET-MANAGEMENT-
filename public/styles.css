@@ -1024,12 +1024,6 @@ button, input, select, textarea {
   color: var(--text-secondary);
 }
 
-/* Applied to a clickable metric card while it's the active table filter */
-.metric-card-selected {
-  box-shadow: var(--shadow-lg), inset 0 0 0 2px var(--ursb-blue);
-  border-left-width: 6px;
-}
-
 .metric-icon-box {
   width: 48px;
   height: 48px;
@@ -1041,12 +1035,46 @@ button, input, select, textarea {
   color: var(--text-secondary);
 }
 
-/* Apply specific border colors to metric cards */
-.card-total { border-left-color: var(--ursb-blue); }
-.card-active { border-left-color: var(--color-active); }
-.card-storage { border-left-color: var(--color-storage); }
-.card-maint { border-left-color: var(--color-maint); }
-.card-disposed { border-left-color: var(--color-disposed); }
+/* Apply specific border colors and icon-box colors to metric cards */
+.card-total {
+  border-left-color: var(--ursb-blue);
+}
+.card-total .metric-icon-box {
+  background-color: var(--ursb-blue-trans);
+  color: var(--ursb-blue);
+}
+
+.card-active {
+  border-left-color: var(--color-active);
+}
+.card-active .metric-icon-box {
+  background-color: var(--color-active-bg);
+  color: var(--color-active);
+}
+
+.card-storage {
+  border-left-color: var(--color-storage);
+}
+.card-storage .metric-icon-box {
+  background-color: var(--color-storage-bg);
+  color: var(--color-storage);
+}
+
+.card-maint {
+  border-left-color: var(--color-maint);
+}
+.card-maint .metric-icon-box {
+  background-color: var(--color-maint-bg);
+  color: var(--color-maint);
+}
+
+.card-disposed {
+  border-left-color: var(--color-disposed);
+}
+.card-disposed .metric-icon-box {
+  background-color: var(--color-disposed-bg);
+  color: var(--color-disposed);
+}
 
 /* Dashboard Visualizations Grid */
 .dashboard-grid {
