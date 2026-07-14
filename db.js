@@ -22,7 +22,7 @@ function initDb() {
       username TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
       name TEXT NOT NULL,
-      role TEXT NOT NULL, -- Admin, AssetManager, AssetCustodian, Employee
+      role TEXT NOT NULL, -- Admin, AssetManager, Employee
       department TEXT,
       status TEXT DEFAULT 'Active', -- Active, Inactive
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -169,7 +169,7 @@ function initDb() {
 
     insertUser.run('admin', hashPassword('admin123'), 'System Administrator', 'Admin', 'Information Technology');
     insertUser.run('manager', hashPassword('manager123'), 'Asset Manager', 'AssetManager', 'Administration');
-    insertUser.run('custodian', hashPassword('custodian123'), 'Asset Custodian', 'AssetCustodian', 'Finance');
+    insertUser.run('custodian', hashPassword('custodian123'), 'Asset Custodian', 'Employee', 'Finance');
     insertUser.run('employee', hashPassword('employee123'), 'Brenda Nansubuga', 'Employee', 'Registries');
     
     console.log('Default accounts created: admin, manager, custodian, employee');

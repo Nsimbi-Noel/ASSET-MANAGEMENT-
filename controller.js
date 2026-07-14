@@ -325,7 +325,7 @@ function bulkRegisterAssets(reqUser, { assets }) {
 
 function listAssignments(reqUser) {
   let query;
-  if (reqUser.role === 'Admin' || reqUser.role === 'AssetManager' || reqUser.role === 'AssetCustodian') {
+  if (reqUser.role === 'Admin' || reqUser.role === 'AssetManager') {
     query = db.prepare(`
       SELECT a.*, ast.name as asset_name, ast.serial_number, ast.type as asset_type,
              u1.name as assigned_to_name, u1.department as assigned_to_department,
@@ -544,7 +544,7 @@ function transferAsset(reqUser, { assetId, toUserId, reason, transferDate }) {
 
 function listMaintenance(reqUser) {
   // Maintenance log is accessible to AssetManagers, Admins, and Custodians.
-  if (reqUser.role !== 'AssetManager' && reqUser.role !== 'Admin' && reqUser.role !== 'AssetCustodian') {
+  if (reqUser.role !== 'AssetManager' && reqUser.role !== 'Admin') {
     throw new Error('Unauthorized to view the maintenance log');
   }
   const query = db.prepare(`
@@ -1032,7 +1032,7 @@ function getLogoBuffer() {
 }
 
 async function generateAssetRegisterPdf(reqUser, filters) {
-  if (reqUser.role !== 'Admin' && reqUser.role !== 'AssetManager' && reqUser.role !== 'AssetCustodian') {
+  if (reqUser.role !== 'Admin' && reqUser.role !== 'AssetManager') {
     throw new Error('Unauthorized to generate asset register PDF');
   }
 

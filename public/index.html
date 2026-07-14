@@ -85,7 +85,7 @@
             <svg class="nav-icon" viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
             <span>Dashboard</span>
           </a></li>
-          <li data-role="Admin,AssetManager,AssetCustodian"><a href="#" class="nav-link" data-view="register" data-label="Asset Register">
+          <li data-role="Admin,AssetManager"><a href="#" class="nav-link" data-view="register" data-label="Asset Register">
             <svg class="nav-icon" viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
             <span>Asset Register</span>
           </a></li>
@@ -93,7 +93,7 @@
             <svg class="nav-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
             <span>My Assets</span>
           </a></li>
-          <li data-role="AssetManager,AssetCustodian,Employee"><a href="#" class="nav-link" data-view="assignments" data-label="Assignments">
+          <li data-role="AssetManager,Employee"><a href="#" class="nav-link" data-view="assignments" data-label="Assignments">
             <svg class="nav-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
             <span>Assignments</span>
           </a></li>
@@ -792,7 +792,6 @@
           <label for="usr-role">System Role*</label>
           <select id="usr-role" required>
             <option value="Employee">Employee (Asset Requesting)</option>
-            <option value="AssetCustodian">Asset Custodian (Receiving Assets)</option>
             <option value="AssetManager">Asset Manager (Full Inventory Operations)</option>
             <option value="Admin">System Administrator</option>
           </select>
