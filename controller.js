@@ -455,7 +455,11 @@ function confirmReceipt(reqUser, assignmentId) {
   return { success: true };
 }
 
-function listTransfers() {
+function listTransfers(reqUser) {
+  // Transfers are AssetManager-only per the RBAC table (not even Admin/Custodian/Employee).
+  if (reqUser.role !== 'AssetManager') {
+    throw new Error('Unauthorized to view asset transfers');
+  }
   const query = db.prepare(`
     SELECT t.*, u1.name as from_name, u1.department as from_department,
            u2.name as to_name, u2.department as to_department,
@@ -538,7 +542,11 @@ function transferAsset(reqUser, { assetId, toUserId, reason, transferDate }) {
 
 // --- Asset Maintenance (Asset Manager Only) ---
 
-function listMaintenance() {
+function listMaintenance(reqUser) {
+  // Maintenance log is AssetManager-only per the RBAC table (not even Admin/Custodian/Employee).
+  if (reqUser.role !== 'AssetManager') {
+    throw new Error('Unauthorized to view the maintenance log');
+  }
   const query = db.prepare(`
     SELECT m.*, a.name as asset_name, a.type as asset_type, a.status as asset_status,
            CASE 

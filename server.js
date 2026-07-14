@@ -236,7 +236,7 @@ const server = http.createServer(async (req, res) => {
 
       // 4. Transfers (Managers)
       if (pathname === '/api/transfers' && method === 'GET') {
-        return sendJSON(res, controller.listTransfers());
+        return sendJSON(res, controller.listTransfers(user));
       }
       if (pathname === '/api/transfers' && method === 'POST') {
         const body = await parseBody(req);
@@ -245,7 +245,7 @@ const server = http.createServer(async (req, res) => {
 
       // 5. Maintenance (Managers)
       if (pathname === '/api/maintenance' && method === 'GET') {
-        return sendJSON(res, controller.listMaintenance());
+        return sendJSON(res, controller.listMaintenance(user));
       }
       if (pathname === '/api/maintenance' && method === 'POST') {
         const body = await parseBody(req);

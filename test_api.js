@@ -101,7 +101,7 @@ async function runTests() {
     assert.ok(maintResult.success, 'Maintenance record should be successfully created');
 
     // Verify expected_completion_date was derived from service_date + estimated duration
-    const maintRecords = controller.listMaintenance();
+    const maintRecords = controller.listMaintenance(managerUser);
     const createdMaintRecord = maintRecords.find(m => m.id === maintResult.maintenanceId);
     assert.strictEqual(createdMaintRecord.expected_completion_date, '2026-06-23', 'Expected completion date should be service_date + estimated_duration_days');
     console.log(`${green}✓ Expected completion date correctly derived from estimated duration.${reset}`);

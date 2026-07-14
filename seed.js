@@ -76,6 +76,77 @@ function seedData() {
     console.log('Sample assets created.');
   }
 
+  // 2b. Backfill a maintenance record for every asset that is marked
+  // 'Under Maintenance' but has no OPEN maintenance row (completed = 0)
+  // pointing at it - an "orphaned" Under Maintenance asset. This can happen
+  // either from the sample assets seeded above, or from an older copy of
+  // this database seeded before this backfill existed. The Maintenance
+  // screen, progress tracking, and "ready for review" notifications are all
+  // driven off the `maintenance` table (joined to assets), not the asset's
+  // status column alone - so an orphaned asset shows that status everywhere
+  // else but never actually appears on the Maintenance screen, and a manager
+  // has no way to act on or close it out.
+  //
+  // Unlike the blocks above, this check is NOT gated on "table is empty" -
+  // it re-evaluates from scratch every run, so re-running `node seed.js` on
+  // an existing database will keep fixing this instead of silently skipping
+  // it forever. It's still safe to run repeatedly: once an asset has an open
+  // maintenance row (whether backfilled here or created normally through the
+  // app), it no longer matches the orphan query below, so nothing is ever
+  // inserted twice.
+  const orphanedUnderMaintenance = db.prepare(`
+    SELECT a.id, a.name FROM assets a
+    WHERE a.status = 'Under Maintenance'
+    AND NOT EXISTS (
+      SELECT 1 FROM maintenance m WHERE m.asset_id = a.id AND m.completed = 0
+    )
+  `).all();
+
+  if (orphanedUnderMaintenance.length > 0) {
+    const serviceProviders = ['Kampala IT Services', 'Simba Telecom Repairs', 'Office World Servicing', 'Uganda Tech Solutions'];
+
+    const insertMaint = db.prepare(`
+      INSERT INTO maintenance (asset_id, service_provider, description, cost, service_date, next_service_date, estimated_duration_days, expected_completion_date, completed)
+      VALUES (?, ?, ?, ?, ?, ?, ?, date(?, '+' || ? || ' days'), 0)
+    `);
+
+    const addDays = (days) => {
+      const d = new Date();
+      d.setDate(d.getDate() + days);
+      return d.toISOString().slice(0, 10);
+    };
+
+    // Spread the backfilled jobs across the three "in-flight" progress states
+    // (Ready for Review / In Progress / Scheduled) so the Maintenance
+    // screen and notification system have something realistic to show
+    // for each, rather than everything landing in one state.
+    orphanedUnderMaintenance.forEach((asset, idx) => {
+      const provider = serviceProviders[idx % serviceProviders.length];
+      let serviceDate, durationDays;
+
+      if (idx % 3 === 0) {
+        // Estimated completion has already passed -> Ready for Review.
+        serviceDate = addDays(-10);
+        durationDays = 5;
+      } else if (idx % 3 === 1) {
+        // Underway, expected completion still ahead -> In Progress.
+        serviceDate = addDays(-2);
+        durationDays = 7;
+      } else {
+        // Hasn't started yet -> Scheduled.
+        serviceDate = addDays(7);
+        durationDays = 5;
+      }
+      const nextServiceDate = addDays(180 + idx); // routine follow-up service, well in the future
+
+      insertMaint.run(
+        asset.id, provider, `Routine servicing for ${asset.name}`, 150000 + (idx * 25000),
+        serviceDate, nextServiceDate, durationDays, serviceDate, durationDays
+      );
+    });
+    console.log(`Backfilled ${orphanedUnderMaintenance.length} maintenance record(s) for orphaned Under Maintenance asset(s).`);
+  }
+
   // 3. Create some assignments (leave a few Active assets unassigned so they show as "Available")
   const assignCheck = db.prepare('SELECT COUNT(*) as count FROM assignments');
   if (assignCheck.get().count === 0) {

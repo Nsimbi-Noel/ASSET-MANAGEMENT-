@@ -18,6 +18,12 @@ let cacheData = {
 // render function.
 let pendingViewFilter = null;
 
+// Raw data + active filter for the My Assets summary cards, which act as
+// quick filters into the combined assignments/requests table below them
+// (mirrors the click-to-filter pattern used by the Maintenance page cards).
+let myAssetsRawData = { assignments: [], requests: [] };
+let myAssetsFilterType = 'all';
+
 // Document Ready
 document.addEventListener('DOMContentLoaded', () => {
   initApp();
@@ -347,10 +353,21 @@ async function renderDashboardView(container) {
     // scope where `data` would be undefined and silently break the handler.
     const maintProgressStatus = data.maintenanceReadyForReview.length > 0 ? 'Ready for Review' : 'Active';
 
+    // Employees can't access the Asset Register or Maintenance Log views, so
+    // their dashboard cards must not act as shortcuts into those views. Render
+    // them as plain, non-interactive <div>s (no onclick, no clickable class,
+    // no navigation hint in the title) instead of <button>s for that role.
+    const isEmployee = currentUser && currentUser.role === 'Employee';
+    const cardTag = isEmployee ? 'div' : 'button';
+    const cardTypeAttr = isEmployee ? '' : 'type="button"';
+    const cardClickableClass = isEmployee ? '' : ' metric-card-clickable';
+
     container.innerHTML = `
-      <!-- Metric Cards Grid: each card is a clickable shortcut into a pre-filtered view -->
+      <!-- Metric Cards Grid: for roles with register/maintenance access, each
+           card is a clickable shortcut into a pre-filtered view. For Employees
+           the cards are informational only (see isEmployee above). -->
       <div class="grid grid-4" style="margin-bottom: 2rem;">
-        <button type="button" class="metric-card metric-card-clickable card-total" onclick="navigateTo('register')" title="View all assets in the Asset Register">
+        <${cardTag} ${cardTypeAttr} class="metric-card${cardClickableClass} card-total" ${isEmployee ? '' : `onclick="navigateTo('register')"`} title="${isEmployee ? 'Total Active Assets' : 'View all assets in the Asset Register'}">
           <div class="metric-info">
             <span class="metric-title">Total Active Assets</span>
             <span class="metric-value">${data.counts.Active + data.counts.InStorage + data.counts.UnderMaintenance}</span>
@@ -358,8 +375,8 @@ async function renderDashboardView(container) {
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9m3 14H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8"/></svg>
           </div>
-        </button>
-        <button type="button" class="metric-card metric-card-clickable card-active" onclick="navigateTo('register', { status: 'Active' })" title="View assigned (active) assets in the Asset Register">
+        </${cardTag}>
+        <${cardTag} ${cardTypeAttr} class="metric-card${cardClickableClass} card-active" ${isEmployee ? '' : `onclick="navigateTo('register', { status: 'Active' })"`} title="${isEmployee ? 'Assigned (Active)' : 'View assigned (active) assets in the Asset Register'}">
           <div class="metric-info">
             <span class="metric-title">Assigned (Active)</span>
             <span class="metric-value">${data.assignmentRatio.assigned || 0}</span>
@@ -367,8 +384,8 @@ async function renderDashboardView(container) {
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
           </div>
-        </button>
-        <button type="button" class="metric-card metric-card-clickable card-storage" onclick="navigateTo('register', { status: 'In Storage' })" title="View in-storage assets in the Asset Register">
+        </${cardTag}>
+        <${cardTag} ${cardTypeAttr} class="metric-card${cardClickableClass} card-storage" ${isEmployee ? '' : `onclick="navigateTo('register', { status: 'In Storage' })"`} title="${isEmployee ? 'In Storage' : 'View in-storage assets in the Asset Register'}">
           <div class="metric-info">
             <span class="metric-title">In Storage</span>
             <span class="metric-value">${data.counts.InStorage}</span>
@@ -376,8 +393,8 @@ async function renderDashboardView(container) {
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
           </div>
-        </button>
-        <button type="button" class="metric-card metric-card-clickable card-maint" onclick="navigateTo('maintenance', { progressStatus: '${maintProgressStatus}' })" title="View active maintenance tickets in the Maintenance Log">
+        </${cardTag}>
+        <${cardTag} ${cardTypeAttr} class="metric-card${cardClickableClass} card-maint" ${isEmployee ? '' : `onclick="navigateTo('maintenance', { progressStatus: '${maintProgressStatus}' })"`} title="${isEmployee ? 'Under Maintenance' : 'View active maintenance tickets in the Maintenance Log'}">
           <div class="metric-info">
             <span class="metric-title">Under Maintenance</span>
             <span class="metric-value">${data.counts.UnderMaintenance}</span>
@@ -385,7 +402,7 @@ async function renderDashboardView(container) {
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
           </div>
-        </button>
+        </${cardTag}>
       </div>
 
       <!-- Acquisition Trend (full width, stretched) -->
@@ -1054,14 +1071,20 @@ async function renderMyAssetsView(container) {
     // Everything currently in the user's possession, whichever route it came through.
     const totalHeld = totalAssigned + receivedRequests.length;
     
+    // Cache the raw per-user lists so setMyAssetsFilter() can re-slice them
+    // without another fetch, and reset to the unfiltered view on each load.
+    myAssetsRawData = { assignments: myAssignments, requests: myRequests };
+    myAssetsFilterType = 'all';
+
     container.innerHTML = `
       <div class="view-actions-bar">
         <h3>My Assets Dashboard</h3>
       </div>
 
-      <!-- My Assets Summary Cards: display-only stats (not interactive for employees) -->
-      <div class="grid grid-4" style="margin-bottom: 2rem;">
-        <div class="metric-card card-total" title="Total Assets Held">
+      <!-- My Assets Summary Cards: each card filters the combined table below
+           to the matching subset (mirrors the Maintenance page's filter cards). -->
+      <div class="grid grid-4" id="my-assets-cards" style="margin-bottom: 2rem;">
+        <button type="button" class="metric-card metric-card-clickable card-total" onclick="setMyAssetsFilter('held')" title="Show everything currently in your possession">
           <div class="metric-info">
             <span class="metric-title">Total Assets Held</span>
             <span class="metric-value">${totalHeld}</span>
@@ -1069,8 +1092,8 @@ async function renderMyAssetsView(container) {
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9m3 14H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8"/></svg>
           </div>
-        </div>
-        <div class="metric-card card-active" title="Directly Assigned">
+        </button>
+        <button type="button" class="metric-card metric-card-clickable card-active" onclick="setMyAssetsFilter('assigned')" title="Show assets directly assigned to you">
           <div class="metric-info">
             <span class="metric-title">Directly Assigned</span>
             <span class="metric-value">${totalAssigned}</span>
@@ -1079,8 +1102,8 @@ async function renderMyAssetsView(container) {
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/></svg>
           </div>
-        </div>
-        <div class="metric-card card-storage" title="Received via Request">
+        </button>
+        <button type="button" class="metric-card metric-card-clickable card-storage" onclick="setMyAssetsFilter('received')" title="Show assets you received via an approved request">
           <div class="metric-info">
             <span class="metric-title">Received via Request</span>
             <span class="metric-value">${receivedRequests.length}</span>
@@ -1088,8 +1111,8 @@ async function renderMyAssetsView(container) {
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           </div>
-        </div>
-        <div class="metric-card card-maint" title="Pending Requests">
+        </button>
+        <button type="button" class="metric-card metric-card-clickable card-maint" onclick="setMyAssetsFilter('pending')" title="Show your requests still awaiting a decision">
           <div class="metric-info">
             <span class="metric-title">Pending Requests</span>
             <span class="metric-value">${pendingRequests}</span>
@@ -1097,7 +1120,7 @@ async function renderMyAssetsView(container) {
           <div class="metric-icon-box">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           </div>
-        </div>
+        </button>
       </div>
       
       <!-- Combined Assets Table -->
@@ -1124,10 +1147,47 @@ async function renderMyAssetsView(container) {
       </div>
     `;
     
-    renderMyAssetsTableRows(myAssignments, myRequests);
+    applyMyAssetsFilter();
   } catch (err) {
     container.innerHTML = `<div class="warning-banner">${err.message}</div>`;
   }
+}
+
+// Re-slices the cached My Assets data per the active card filter and
+// re-renders the table. 'all' (the default) shows everything unfiltered.
+function applyMyAssetsFilter() {
+  const { assignments, requests } = myAssetsRawData;
+  let filteredAssignments = assignments;
+  let filteredRequests = requests;
+
+  switch (myAssetsFilterType) {
+    case 'held':
+      // "Total Assets Held": direct assignments + requests actually received.
+      filteredRequests = requests.filter(r => r.status === 'Approved' && r.received_status === 'Received');
+      break;
+    case 'assigned':
+      filteredRequests = [];
+      break;
+    case 'received':
+      filteredAssignments = [];
+      filteredRequests = requests.filter(r => r.status === 'Approved' && r.received_status === 'Received');
+      break;
+    case 'pending':
+      filteredAssignments = [];
+      filteredRequests = requests.filter(r => r.status === 'Pending');
+      break;
+    default:
+      // 'all' - no slicing, show everything.
+      break;
+  }
+
+  renderMyAssetsTableRows(filteredAssignments, filteredRequests, myAssetsFilterType !== 'all');
+}
+
+// Clicking the active card's filter again returns to the unfiltered view (toggle).
+function setMyAssetsFilter(type) {
+  myAssetsFilterType = (myAssetsFilterType === type) ? 'all' : type;
+  applyMyAssetsFilter();
 }
 
 function renderMyAssetsTableRows(assignments, requests, isFiltered = false) {
