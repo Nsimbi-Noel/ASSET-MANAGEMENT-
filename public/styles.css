@@ -1098,6 +1098,25 @@ button, input, select, textarea {
   border: 1px solid var(--border-color);
 }
 
+/* Make most cards use the same color accent and elevation as the
+   employee/dashboard metric cards for a consistent system-wide look. */
+.table-card,
+.dashboard-card,
+.auth-card,
+.modal-card,
+.view-card,
+.card {
+  background-color: var(--card-bg);
+  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-md);
+  /* subtle left accent like the metric cards */
+  border-left: 4px solid var(--border-color);
+}
+
+/* default accent color for non-metric cards; individual card types can
+   override this by setting their own border-left-color */
+.table-card { border-left-color: var(--ursb-blue); }
+
 .dashboard-card h3 {
   font-size: 1.1rem;
   font-weight: 600;

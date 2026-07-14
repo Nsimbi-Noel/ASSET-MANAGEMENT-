@@ -101,7 +101,10 @@ function showApp() {
     activeView = 'dashboard';
   }
 
-  // Navigate to default view or dashboard
+  // Ensure newly logged-in users always start on the dashboard.
+  // This guarantees a consistent landing page for every login session.
+  activeView = 'dashboard';
+  // Navigate to dashboard
   navigateTo(activeView);
 }
 
@@ -344,7 +347,7 @@ function renderView(view) {
 // ================= VIEW: DASHBOARD =================
 async function renderDashboardView(container) {
   try {
-    const res = await fetch('/api/reports/dashboard');
+    const res = await fetch('/api/reports/dashboard', { cache: 'no-cache' });
     if (!res.ok) throw new Error('Failed to fetch dashboard metrics');
     const data = await res.json();
 
@@ -487,6 +490,7 @@ async function renderDashboardView(container) {
       <!-- Maintenance Overdue Warnings -->
       <div class="dashboard-card" style="margin-top: 1.5rem;">
         <h3>Upcoming and Overdue Maintenance</h3>
+        <p class="text-secondary" style="font-size:0.85rem;margin-top:0.4rem;">"Overdue" indicates an asset whose last completed maintenance listed a next service date before today and has no open maintenance job.</p>
         <div class="table-responsive">
           <table style="margin-top: 0.5rem;">
             <thead>
@@ -1764,7 +1768,7 @@ function renderMaintenanceTableRows(records) {
         <td><strong>${m.asset_id}</strong></td>
         <td>${m.asset_name}</td>
         <td>${m.service_provider}</td>
-        <td>UGX ${Number(m.cost).toLocaleString()}</td>
+        <td>UGX ${Number(m.cost).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
         <td>${m.service_date}</td>
         <td>${m.expected_completion_date ? `<span style="${readyForReview ? 'color:#c53030;font-weight:600;' : ''}">${m.expected_completion_date}</span>` : 'N/A'}</td>
         <td>
@@ -1963,7 +1967,7 @@ async function submitCompleteMaintenance() {
       
       closeModal('modal-complete-maintenance');
       pendingMaintenanceCompletion = null;
-      renderView('maintenance');
+      renderView(activeView);
     } else {
       showToast(data.error || 'Failed to close ticket', 'error');
     }
@@ -2042,7 +2046,7 @@ async function loadDisposalsTableRows(disposedAssets) {
         <td>${asset.name}</td>
         <td>${asset.type}</td>
         <td>${asset.serial_number}</td>
-        <td>UGX ${asset.cost.toLocaleString()}</td>
+        <td>UGX ${Number(asset.cost).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
         <td>
           ${disp ? `
             <strong>Method:</strong> ${disp.method}<br>
@@ -2395,7 +2399,7 @@ async function viewAssetDetails(assetId) {
     statusBadge.textContent = data.asset.status;
     
     document.getElementById('det-acq-date').textContent = data.asset.acquisition_date;
-    document.getElementById('det-cost').textContent = `UGX ${data.asset.cost.toLocaleString()}`;
+    document.getElementById('det-cost').textContent = `UGX ${Number(data.asset.cost).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
     document.getElementById('det-supplier').textContent = data.asset.supplier;
     document.getElementById('det-source').textContent = data.asset.source;
     
@@ -2460,7 +2464,7 @@ async function viewAssetDetails(assetId) {
       events.push({
         date: m.service_date,
         title: `Servicing Open - ${m.service_provider}`,
-        desc: `Diagnostic: ${m.description}. Cost: UGX ${m.cost.toLocaleString()}`,
+        desc: `Diagnostic: ${m.description}. Cost: UGX ${Number(m.cost).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
         class: 'maintenance'
       });
       if (m.completed === 1) {
@@ -2982,7 +2986,7 @@ async function populateAvailableAssetsDropdown() {
   if (!select) return;
   select.innerHTML = `<option value="">Loading available assets...</option>`;
   try {
-    const res = await fetch('/api/reports/dashboard');
+    const res = await fetch('/api/reports/dashboard', { cache: 'no-cache' });
     if (!res.ok) throw new Error('Failed to load assets');
     const data = await res.json();
     const available = (data.assetAvailability || []).filter(a => a.availability === 'Available');
@@ -3195,7 +3199,7 @@ async function loadUpcomingAlerts() {
   const alertsList = document.getElementById('alerts-list');
   
   try {
-    const res = await fetch('/api/reports/dashboard');
+    const res = await fetch('/api/reports/dashboard', { cache: 'no-cache' });
     if (!res.ok) return;
     const data = await res.json();
 

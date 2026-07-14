@@ -51,14 +51,15 @@ const MIME_TYPES = {
 };
 
 // Helper: send JSON response
-function sendJSON(res, data, status = 200) {
-  res.writeHead(status, { 'Content-Type': 'application/json' });
+function sendJSON(res, data, status = 200, headers = {}) {
+  const baseHeaders = { 'Content-Type': 'application/json', ...headers };
+  res.writeHead(status, baseHeaders);
   res.end(JSON.stringify(data));
 }
 
 // Helper: send Error response
-function sendError(res, message, status = 400) {
-  sendJSON(res, { error: message }, status);
+function sendError(res, message, status = 400, headers = {}) {
+  sendJSON(res, { error: message }, status, headers);
 }
 
 // Helper: parse request body
@@ -124,8 +125,8 @@ const server = http.createServer(async (req, res) => {
         const body = await parseBody(req);
         const result = controller.login(body.username, body.password);
         
-        // Set cookie
-        res.setHeader('Set-Cookie', `session=${result.sessionId}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400`);
+        // Set session cookie so the user must log in again after closing the browser.
+        res.setHeader('Set-Cookie', `session=${result.sessionId}; Path=/; HttpOnly; SameSite=Strict`);
         return sendJSON(res, result);
       }
       
@@ -297,7 +298,12 @@ const server = http.createServer(async (req, res) => {
 
       // 8. Reports & Dashboards
       if (pathname === '/api/reports/dashboard' && method === 'GET') {
-        return sendJSON(res, controller.getDashboardMetrics());
+        return sendJSON(res, controller.getDashboardMetrics(), 200, {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'Surrogate-Control': 'no-store'
+        });
       }
       if (pathname === '/api/reports/register' && method === 'GET') {
         // Employees are not permitted to access the asset register

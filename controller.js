@@ -543,17 +543,33 @@ function transferAsset(reqUser, { assetId, toUserId, reason, transferDate }) {
 // --- Asset Maintenance (Asset Manager Only) ---
 
 function listMaintenance(reqUser) {
-  // Maintenance log is AssetManager-only per the RBAC table (not even Admin/Custodian/Employee).
-  if (reqUser.role !== 'AssetManager') {
+  // Maintenance log is accessible to AssetManagers, Admins, and Custodians.
+  if (reqUser.role !== 'AssetManager' && reqUser.role !== 'Admin' && reqUser.role !== 'AssetCustodian') {
     throw new Error('Unauthorized to view the maintenance log');
   }
   const query = db.prepare(`
     SELECT m.*, a.name as asset_name, a.type as asset_type, a.status as asset_status,
-           CASE 
+           -- Determine progress_status with stricter Overdue semantics:
+           -- Overdue should reflect assets whose last completed maintenance's
+           -- next_service_date is in the past, and there is NO open (incomplete)
+           -- maintenance row for that asset. We compute two correlated
+           -- subqueries per row: the most recent completed next_service_date,
+           -- and whether there exists any open maintenance for the same asset.
+           CASE
              WHEN m.completed = 1 THEN 'Completed'
              WHEN m.expected_completion_date IS NOT NULL AND date(m.expected_completion_date) < date('now') THEN 'Ready for Review'
              WHEN m.expected_completion_date IS NOT NULL AND date(m.expected_completion_date) = date('now') THEN 'Due Today'
-             WHEN date(m.next_service_date) < date('now') THEN 'Overdue'
+             WHEN (
+               (SELECT count(1) FROM maintenance m_open WHERE m_open.asset_id = m.asset_id AND m_open.completed = 0) = 0
+               AND (
+                 SELECT m_comp.next_service_date FROM maintenance m_comp
+                 WHERE m_comp.asset_id = m.asset_id AND m_comp.completed = 1
+                 ORDER BY m_comp.service_date DESC LIMIT 1
+               ) IS NOT NULL
+               AND date((SELECT m_comp2.next_service_date FROM maintenance m_comp2
+                         WHERE m_comp2.asset_id = m.asset_id AND m_comp2.completed = 1
+                         ORDER BY m_comp2.service_date DESC LIMIT 1)) < date('now')
+             ) THEN 'Overdue'
              WHEN date(m.service_date) <= date('now') THEN 'In Progress'
              ELSE 'Scheduled'
            END as progress_status
@@ -1031,7 +1047,7 @@ async function generateAssetRegisterPdf(reqUser, filters) {
     serial_number: asset.serial_number,
     condition: asset.condition,
     acquisition_date: asset.acquisition_date,
-    cost: (asset.cost || 0).toLocaleString(),
+    cost: Number(asset.cost || 0).toLocaleString(undefined, { maximumFractionDigits: 0 }),
     supplier: asset.supplier,
     status: asset.status,
     custodian_name: asset.custodian_name || '-',
