@@ -287,7 +287,7 @@ function navigateTo(view, filter = null) {
     register: 'Asset Register',
     'my-assets': 'My Assigned Assets',
     assignments: 'Asset Assignments',
-    transfers: 'Asset Custodian Transfers',
+    transfers: 'Asset Transfers',
     maintenance: 'Asset Maintenance Logs',
     disposals: 'Disposed Asset Archives',
     requests: 'Asset Requisitions',
@@ -922,7 +922,7 @@ async function renderRegisterView(container) {
                 <th class="sortable" onclick="sortTable('asset-register-table', 2)">Type <span class="sort-indicator">↕</span></th>
                 <th class="sortable" onclick="sortTable('asset-register-table', 3)">Serial Number <span class="sort-indicator">↕</span></th>
                 <th class="sortable" onclick="sortTable('asset-register-table', 4)">Condition <span class="sort-indicator">↕</span></th>
-                <th>Custodian / Dept</th>
+                <th>Assignee / Dept</th>
                 <th class="sortable" onclick="sortTable('asset-register-table', 6)">Status <span class="sort-indicator">↕</span></th>
                 <th>Actions</th>
               </tr>
@@ -1022,7 +1022,7 @@ function exportAssetRegisterCSV() {
     return;
   }
   
-  let csvContent = 'Asset ID,Asset Name,Type,Category,Serial Number,Condition,Acquisition Date,Cost (UGX),Supplier,Source,Custodian,Department,Status\n';
+  let csvContent = 'Asset ID,Asset Name,Type,Category,Serial Number,Condition,Acquisition Date,Cost (UGX),Supplier,Source,Assignee,Department,Status\n';
   
   cacheData.assets.forEach(a => {
     const custodian = a.custodian_name ? a.custodian_name.replace(/"/g, '""') : '';
@@ -1301,7 +1301,7 @@ async function renderAssignmentsView(container) {
               <tr>
                 <th>Asset ID</th>
                 <th>Asset Name</th>
-                <th>Assigned To (Custodian)</th>
+                <th>Assigned To</th>
                 <th>Department</th>
                 <th>Assigned By</th>
                 <th>Assignment Date</th>
@@ -1466,10 +1466,10 @@ async function renderTransfersView(container) {
     
     container.innerHTML = `
       <div class="view-actions-bar">
-        <h3>Custodian Allocation History</h3>
+        <h3>Transfer History</h3>
         <div>
           <button class="btn btn-primary" onclick="openTransferAssetModal()">
-            New Custodian Transfer
+            New Transfer
           </button>
         </div>
       </div>
@@ -1480,8 +1480,8 @@ async function renderTransfersView(container) {
             <thead>
               <tr>
                 <th>Asset ID</th>
-                <th>From Custodian</th>
-                <th>To Custodian</th>
+                <th>From</th>
+                <th>To</th>
                 <th>Transfer Date</th>
                 <th>Reason</th>
                 <th>Authorized By</th>
@@ -1843,19 +1843,19 @@ async function completeMaintenancePrompt(maintenanceId, assetId) {
     }
   }
   
-  // Load users for assignment dropdown and try to pre-select last custodian
+  // Load users for assignment dropdown and try to pre-select last assignee
   try {
     const [usersRes, historyRes] = await Promise.all([
       fetch('/api/users'),
       fetch(`/api/reports/history/${assetId}`)
     ]);
     
-    let lastCustodianId = null;
+    let lastAssigneeId = null;
     if (historyRes.ok) {
       const history = await historyRes.json();
       if (history.assignments && history.assignments.length > 0) {
         // The most recent assignment is first due to ORDER BY assignment_date DESC
-        lastCustodianId = history.assignments[0].assigned_to;
+        lastAssigneeId = history.assignments[0].assigned_to;
       }
     }
 
@@ -1867,8 +1867,8 @@ async function completeMaintenancePrompt(maintenanceId, assetId) {
         if (u.status === 'Active') {
           const option = document.createElement('option');
           option.value = u.id;
-          option.textContent = `${u.name} (${u.department})${u.id === lastCustodianId ? ' [Last Custodian]' : ''}`;
-          if (u.id === lastCustodianId) option.selected = true;
+          option.textContent = `${u.name} (${u.department})${u.id === lastAssigneeId ? ' [Last Assignee]' : ''}`;
+          if (u.id === lastAssigneeId) option.selected = true;
           selectEl.appendChild(option);
         }
       });
@@ -2403,7 +2403,7 @@ async function viewAssetDetails(assetId) {
     document.getElementById('det-supplier').textContent = data.asset.supplier;
     document.getElementById('det-source').textContent = data.asset.source;
     
-    // Custodian Details
+    // Assignee Details
     const custodianBox = document.getElementById('det-current-custodian-box');
     const activeAssign = data.assignments.find(a => a.status === 'Active');
     
@@ -3290,7 +3290,6 @@ function removeToast(toast) {
 // ================= GENERAL HELPERS =================
 function formatRole(role) {
   if (role === 'AssetManager') return 'Asset Manager';
-  if (role === 'AssetCustodian') return 'Asset Custodian';
   return role;
 }
 

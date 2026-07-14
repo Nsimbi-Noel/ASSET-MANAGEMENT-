@@ -127,7 +127,7 @@ function getSession(sessionId) {
 
 function listUsers(reqUser) {
   // Admins manage accounts; Asset Managers need this list to assign/transfer
-  // assets to employees and custodians, so they must be allowed to read it too.
+  // assets to employees and assignees, so they must be allowed to read it too.
   if (reqUser.role !== 'Admin' && reqUser.role !== 'AssetManager') {
     throw new Error('Unauthorized');
   }
@@ -321,11 +321,11 @@ function bulkRegisterAssets(reqUser, { assets }) {
   return { success: true, imported: results.length, errors: errors.length, assets: results, errors };
 }
 
-// --- Asset Assignment & Transfers (Asset Manager & Custodians) ---
+// --- Asset Assignment & Transfers (Asset Manager) ---
 
 function listAssignments(reqUser) {
   let query;
-  if (reqUser.role === 'Admin' || reqUser.role === 'AssetManager' || reqUser.role === 'AssetCustodian') {
+  if (reqUser.role === 'Admin' || reqUser.role === 'AssetManager') {
     query = db.prepare(`
       SELECT a.*, ast.name as asset_name, ast.serial_number, ast.type as asset_type,
              u1.name as assigned_to_name, u1.department as assigned_to_department,
@@ -357,7 +357,7 @@ function assignAsset(reqUser, { assetId, assignedTo, assignmentDate, purpose, no
   if (reqUser.role !== 'AssetManager') throw new Error('Unauthorized');
   
   if (!assetId || !assignedTo || !assignmentDate) {
-    throw new Error('Asset, custodian, and date are required fields');
+    throw new Error('Asset, assignee, and date are required fields');
   }
   
   // Enforce assignment rules:
@@ -445,7 +445,7 @@ function confirmReceipt(reqUser, assignmentId) {
   const assignment = query.get(assignmentId);
   
   if (!assignment) throw new Error('Assignment not found');
-  if (assignment.assigned_to !== reqUser.id) throw new Error('Only the assigned custodian can confirm receipt');
+  if (assignment.assigned_to !== reqUser.id) throw new Error('Only the assigned user can confirm receipt');
   if (assignment.confirmed_receipt === 1) throw new Error('Receipt already confirmed');
   
   const update = db.prepare('UPDATE assignments SET confirmed_receipt = 1 WHERE id = ?');
@@ -456,7 +456,7 @@ function confirmReceipt(reqUser, assignmentId) {
 }
 
 function listTransfers(reqUser) {
-  // Transfers are AssetManager-only per the RBAC table (not even Admin/Custodian/Employee).
+  // Transfers are AssetManager-only per the RBAC table (not even Admin/Employee).
   if (reqUser.role !== 'AssetManager') {
     throw new Error('Unauthorized to view asset transfers');
   }
@@ -488,12 +488,12 @@ function transferAsset(reqUser, { assetId, toUserId, reason, transferDate }) {
   const activeAssign = activeAssignmentQuery.get(assetId);
   
   if (!activeAssign) {
-    throw new Error('Asset is not currently assigned to any custodian. Assign it directly instead.');
+    throw new Error('Asset is not currently assigned to any user. Assign it directly instead.');
   }
   
   const fromUserId = activeAssign.assigned_to;
   if (fromUserId === parseInt(toUserId, 10)) {
-    throw new Error('Cannot transfer an asset to the same custodian.');
+    throw new Error('Cannot transfer an asset to the same user.');
   }
   
   db.exec('BEGIN TRANSACTION');
@@ -509,7 +509,7 @@ function transferAsset(reqUser, { assetId, toUserId, reason, transferDate }) {
     // 2. Insert new assignment
     const insertNew = db.prepare(`
       INSERT INTO assignments (asset_id, assigned_to, assigned_by, assignment_date, purpose, notes, confirmed_receipt, status)
-      VALUES (?, ?, ?, ?, ?, 'Transferred from previous custodian', 0, 'Active')
+      VALUES (?, ?, ?, ?, ?, 'Transferred from previous assignee', 0, 'Active')
     `);
     insertNew.run(assetId, toUserId, reqUser.id, transferDate, activeAssign.purpose);
     
@@ -530,7 +530,7 @@ function transferAsset(reqUser, { assetId, toUserId, reason, transferDate }) {
     const fromName = names.find(n => n.id === fromUserId)?.name || String(fromUserId);
     const toName = names.find(n => n.id === parseInt(toUserId, 10))?.name || String(toUserId);
     
-    logAudit(reqUser.id, reqUser.username, 'CREATE', 'transfers', assetId, `Transferred asset ${assetId} from ${fromName} to ${toName}`);
+  logAudit(reqUser.id, reqUser.username, 'CREATE', 'transfers', assetId, `Transferred asset ${assetId} from ${fromName} to ${toName}`);
     
     db.exec('COMMIT');
     return { success: true };
@@ -543,8 +543,8 @@ function transferAsset(reqUser, { assetId, toUserId, reason, transferDate }) {
 // --- Asset Maintenance (Asset Manager Only) ---
 
 function listMaintenance(reqUser) {
-  // Maintenance log is accessible to AssetManagers, Admins, and Custodians.
-  if (reqUser.role !== 'AssetManager' && reqUser.role !== 'Admin' && reqUser.role !== 'AssetCustodian') {
+  // Maintenance log is accessible to AssetManagers and Admins.
+  if (reqUser.role !== 'AssetManager' && reqUser.role !== 'Admin') {
     throw new Error('Unauthorized to view the maintenance log');
   }
   const query = db.prepare(`
@@ -722,7 +722,7 @@ function listRequests(reqUser) {
     `);
     return query.all(reqUser.id);
   } else {
-    // Managers, Admins, Custodians can view all requests
+    // Managers and Admins can view all requests
     query = db.prepare(`
       SELECT r.*, u.name as requested_by_name, u2.name as actioned_by_name 
       FROM requests r
@@ -884,15 +884,25 @@ function getDashboardMetrics() {
   `);
   const maintenanceReadyForReview = readyForReviewQuery.all();
 
-  // 7. Asset acquisition trend (assets added per day for more detailed curvature)
+  // 7. Asset acquisition trend (assets added per month for the current year)
+  const currentYear = new Date().getFullYear().toString();
   const trendQuery = db.prepare(`
-    SELECT strftime('%Y-%m-%d', acquisition_date) as month, COUNT(*) as count
+    SELECT strftime('%Y-%m', acquisition_date) as month, COUNT(*) as count
     FROM assets
     WHERE acquisition_date IS NOT NULL
+      AND strftime('%Y', acquisition_date) = ?
     GROUP BY month
     ORDER BY month ASC
   `);
-  const acquisitionTrend = trendQuery.all();
+  const acquisitionTrendRows = trendQuery.all(currentYear);
+
+  const acquisitionTrendMap = new Map(acquisitionTrendRows.map(row => [row.month, row.count]));
+  const currentMonth = Math.min(new Date().getMonth() + 1, 12);
+  const acquisitionTrend = [];
+  for (let month = 1; month <= currentMonth; month += 1) {
+    const monthKey = `${currentYear}-${String(month).padStart(2, '0')}`;
+    acquisitionTrend.push({ month: monthKey, count: acquisitionTrendMap.get(monthKey) || 0 });
+  }
 
   // 8. Asset availability list (for request reference table)
   const availabilityQuery = db.prepare(`
@@ -1032,7 +1042,7 @@ function getLogoBuffer() {
 }
 
 async function generateAssetRegisterPdf(reqUser, filters) {
-  if (reqUser.role !== 'Admin' && reqUser.role !== 'AssetManager' && reqUser.role !== 'AssetCustodian') {
+  if (reqUser.role !== 'Admin' && reqUser.role !== 'AssetManager') {
     throw new Error('Unauthorized to generate asset register PDF');
   }
 
@@ -1058,7 +1068,7 @@ async function generateAssetRegisterPdf(reqUser, filters) {
     return await generateTablePdf({
       title: 'URSB Asset Register Report',
       logoBuffer,
-      columns: ['Asset ID', 'Name', 'Type', 'Category', 'Serial No.', 'Condition', 'Acquisition Date', 'Cost (UGX)', 'Supplier', 'Status', 'Custodian', 'Department'],
+      columns: ['Asset ID', 'Name', 'Type', 'Category', 'Serial No.', 'Condition', 'Acquisition Date', 'Cost (UGX)', 'Supplier', 'Status', 'Assignee', 'Department'],
       columnKeys: ['id', 'name', 'type', 'category', 'serial_number', 'condition', 'acquisition_date', 'cost', 'supplier', 'status', 'custodian_name', 'custodian_department'],
       rows
     }, true);

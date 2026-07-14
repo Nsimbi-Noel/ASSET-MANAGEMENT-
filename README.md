@@ -6,9 +6,9 @@ A full-featured asset lifecycle management system for the Uganda Registration Se
 
 - **Asset Lifecycle** — Register, assign, transfer, maintain, and dispose assets
 - **Request & Approval Workflow** — Employees submit requisitions; managers approve or reject
-- **Role-Based Access Control** — Four distinct roles with granular permissions (see table below)
+- **Role-Based Access Control** — Three distinct roles with granular permissions (see table below)
 - **Dashboard** — Metrics, status distribution charts, and upcoming maintenance alerts
-- **Asset Register** — Searchable, filterable, sortable table with CSV/PDF export _(restricted to Admin, AssetManager, AssetCustodian)_
+- **Asset Register** — Searchable, filterable, sortable table with CSV/PDF export _(restricted to Admin and AssetManager)_
 - **Asset History Timeline** — Full lifecycle timeline per asset
 - **Audit Trail** — Immutable system change logs
 - **Session-Based Auth** — Secure PBKDF2 password hashing with rate-limited login
@@ -16,17 +16,17 @@ A full-featured asset lifecycle management system for the Uganda Registration Se
 
 ## Role Permissions
 
-| Feature | Admin | AssetManager | AssetCustodian | Employee |
-|---------|:-----:|:------------:|:--------------:|:--------:|
-| Dashboard | ✅ | ✅ | ✅ | ✅ |
-| Asset Register | ✅ | ✅ | ✅ | ❌ |
-| Assignments | ✅ | ✅ | ✅ | ✅ |
-| Transfers | ❌ | ✅ | ❌ | ❌ |
-| Maintenance | ❌ | ✅ | ❌ | ❌ |
-| Disposals | ❌ | ✅ | ❌ | ❌ |
-| Requests | ✅ | ✅ | ✅ | ✅ |
-| User Accounts | ✅ | ❌ | ❌ | ❌ |
-| Audit Logs | ✅ | ✅ | ❌ | ❌ |
+| Feature | Admin | AssetManager | Employee |
+|---------|:-----:|:------------:|:--------:|
+| Dashboard | ✅ | ✅ | ✅ |
+| Asset Register | ✅ | ✅ | ❌ |
+| Assignments | ✅ | ✅ | ✅ |
+| Transfers | ❌ | ✅ | ❌ |
+| Maintenance | ❌ | ✅ | ❌ |
+| Disposals | ❌ | ✅ | ❌ |
+| Requests | ✅ | ✅ | ✅ |
+| User Accounts | ✅ | ❌ | ❌ |
+| Audit Logs | ✅ | ✅ | ❌ |
 
 ## Tech Stack
 
@@ -114,7 +114,6 @@ Use the following default credentials to log in and explore the system:
 |----------|----------|------|
 | `admin` | `admin123` | Admin |
 | `manager` | `manager123` | AssetManager |
-| `custodian` | `custodian123` | AssetCustodian |
 | `employee` | `employee123` | Employee |
 
 > **Note:** Employees have restricted access. They can only view the Dashboard, submit asset requests, and manage their assigned assets.
@@ -144,7 +143,7 @@ All routes under `/api/`:
 | GET | `/api/assets/:id` | Yes | Get asset details |
 | GET/POST | `/api/assignments` | Yes | List/create assignments |
 | PUT | `/api/assignments/:id/return` | Manager | Return asset |
-| PUT | `/api/assignments/:id/confirm` | Custodian | Confirm receipt |
+| PUT | `/api/assignments/:id/confirm` | Assigned user | Confirm receipt |
 | GET/POST | `/api/transfers` | Manager | List/create transfers |
 | GET/POST | `/api/maintenance` | Manager | List/create maintenance |
 | PUT | `/api/maintenance/:id/complete` | Manager | Complete maintenance |
@@ -152,7 +151,7 @@ All routes under `/api/`:
 | GET/POST | `/api/requests` | Yes | List/create requests |
 | PUT | `/api/requests/:id/action` | Manager | Approve/reject request |
 | GET | `/api/reports/dashboard` | Yes | Dashboard metrics |
-| GET | `/api/reports/register` | Manager/Admin/Custodian | Asset register (filtered) |
+| GET | `/api/reports/register` | Manager/Admin | Asset register (filtered) |
 | GET | `/api/reports/history/:id` | Yes | Asset lifecycle history |
 | GET | `/api/reports/audits` | Manager+ | Audit logs |
 

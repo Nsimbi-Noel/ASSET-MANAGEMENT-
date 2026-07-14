@@ -5,7 +5,7 @@ function seedData() {
   console.log('Seeding sample data...');
 
   const departments = ['Information Technology', 'Administration', 'Finance', 'Registries', 'Legal', 'Human Resources', 'Public Relations'];
-  const roles = ['Admin', 'AssetManager', 'AssetCustodian', 'Employee'];
+  const roles = ['Admin', 'AssetManager', 'Employee'];
   
   // 1. Create 30 Employee Users (to match the 30 sample assets)
   const employeeNames = [
@@ -17,31 +17,88 @@ function seedData() {
     'Samuel Kintu', 'Irene Apio', 'Paul Tugume', 'Harriet Nansamba', 'Tom Egadu'
   ];
 
-  const employeeCheck = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'Employee'");
-  const currentEmployeeCount = employeeCheck.get().count;
+  const userCheck = db.prepare('SELECT COUNT(*) as count FROM users');
+  const currentUserCount = userCheck.get().count;
+  const targetUserCount = 200;
 
-  if (currentEmployeeCount < 30) {
+  if (currentUserCount > targetUserCount) {
+    const deleteUsers = currentUserCount - targetUserCount;
+    db.prepare(`
+      DELETE FROM users
+      WHERE id IN (
+        SELECT id FROM users
+        WHERE username LIKE 'user%'
+        ORDER BY id DESC
+        LIMIT ?
+      )
+    `).run(deleteUsers);
+    console.log(`Removed ${deleteUsers} extra seeded users to keep the dataset at ${targetUserCount}.`);
+  }
+
+  if (currentUserCount < targetUserCount) {
     const insertUser = db.prepare(`
       INSERT INTO users (username, password, name, role, department)
       VALUES (?, ?, ?, ?, ?)
     `);
 
-    for (let i = currentEmployeeCount + 1; i <= 30; i++) {
-      const username = `employee${i}`;
-      const name = employeeNames[(i - 1) % employeeNames.length];
+    const extraFirstNames = ['Alice', 'Bernard', 'Clara', 'David', 'Evelyn', 'Frank', 'Gillian', 'Harold', 'Irene', 'Joseph', 'Kemi', 'Lucas', 'Martha', 'Nathan', 'Odong', 'Patricia', 'Quentin', 'Rosaline', 'Samuel', 'Theresa', 'Umar', 'Victoria', 'Wambui', 'Xavier', 'Yvonne', 'Zed'];
+    const extraLastNames = ['Bakare', 'Chan', 'Dlamini', 'Ekundayo', 'Fahim', 'Gonzalez', 'Hassan', 'Ibrahim', 'Juma', 'Kebede', 'Lule', 'Mugisha', 'Nabirye', 'Okoth', 'Patel', 'Quartey', 'Rukundo', 'Ssewankambo', 'Tumusiime', 'Umaru', 'Vanessa', 'Wanjiru', 'Yusuf', 'Zainab'];
+    const roleBuckets = [];
+
+    for (let i = 0; i < 10; i++) roleBuckets.push('AssetManager');
+    for (let i = roleBuckets.length; i < targetUserCount - currentUserCount; i++) roleBuckets.push('Employee');
+
+    const totalToCreate = targetUserCount - currentUserCount;
+    for (let i = 0; i < totalToCreate; i++) {
+      const username = `user${currentUserCount + i + 1}`;
+      const first = extraFirstNames[i % extraFirstNames.length];
+      const last = extraLastNames[(i + 3) % extraLastNames.length];
+      const name = `${first} ${last}`;
+      const role = roleBuckets[i] || 'Employee';
       const dept = departments[i % departments.length];
       try {
-        insertUser.run(username, hashPassword('password123'), name, 'Employee', dept);
+        insertUser.run(username, hashPassword('password123'), name, role, dept);
       } catch (e) {
         // Skip if username exists
       }
     }
-    console.log('Sample users created.');
+    console.log(`Seeded ${targetUserCount - currentUserCount} additional users.`);
   }
 
   // 2. Create Sample Assets
   const assetCheck = db.prepare('SELECT COUNT(*) as count FROM assets');
-  if (assetCheck.get().count === 0) {
+  const existingAssetCount = assetCheck.get().count;
+  const targetAssetCount = 500;
+
+  if (existingAssetCount > targetAssetCount) {
+    const deleteAssets = existingAssetCount - targetAssetCount;
+    const assetsToDelete = db.prepare(`
+      SELECT id FROM assets
+      ORDER BY id DESC
+      LIMIT ?
+    `).all(deleteAssets).map(row => row.id);
+
+    if (assetsToDelete.length > 0) {
+      const deleteAssignments = db.prepare(`DELETE FROM assignments WHERE asset_id IN (${assetsToDelete.map(() => '?').join(',')})`);
+      const deleteMaintenance = db.prepare(`DELETE FROM maintenance WHERE asset_id IN (${assetsToDelete.map(() => '?').join(',')})`);
+      const deleteDisposals = db.prepare(`DELETE FROM disposals WHERE asset_id IN (${assetsToDelete.map(() => '?').join(',')})`);
+      const deleteTransfers = db.prepare(`DELETE FROM transfers WHERE asset_id IN (${assetsToDelete.map(() => '?').join(',')})`);
+
+      deleteAssignments.run(...assetsToDelete);
+      deleteMaintenance.run(...assetsToDelete);
+      deleteDisposals.run(...assetsToDelete);
+      deleteTransfers.run(...assetsToDelete);
+
+      db.prepare(`
+        DELETE FROM assets
+        WHERE id IN (${assetsToDelete.map(() => '?').join(',')})
+      `).run(...assetsToDelete);
+    }
+
+    console.log(`Removed ${deleteAssets} extra assets so the dataset remains at ${targetAssetCount}.`);
+  }
+
+  if (existingAssetCount < targetAssetCount) {
     const insertAsset = db.prepare(`
       INSERT INTO assets (id, name, type, category, serial_number, condition, acquisition_date, cost, supplier, source, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -55,25 +112,63 @@ function seedData() {
       { name: 'Samsung 27" Monitor', type: 'Monitor', category: 'IT Equipment' },
       { name: 'Apple MacBook Pro', type: 'Laptop', category: 'IT Equipment' },
       { name: 'Conference Table', type: 'Furniture', category: 'Furniture' },
-      { name: 'Air Conditioner', type: 'Fittings', category: 'Fittings' }
+      { name: 'Air Conditioner', type: 'Fittings', category: 'Fittings' },
+      { name: 'Projector X200', type: 'Projector', category: 'IT Equipment' },
+      { name: 'Network Switch 48-Port', type: 'Switch', category: 'IT Infrastructure' }
     ];
 
-    for (let i = 1; i <= 30; i++) {
-      const assetInfo = assetTypes[i % assetTypes.length];
-      const id = `URSB-AST-${String(i).padStart(4, '0')}`;
-      const serial = `SN-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
-      const condition = ['New', 'Good', 'Refurbished'][i % 3];
-      const acqMonth = ((i * 2) % 18) + 1; // spread across 18 months
-      const acqYear = acqMonth <= 12 ? 2024 : 2025;
-      const acqMonthNorm = acqMonth <= 12 ? acqMonth : acqMonth - 12;
-      const acqDate = `${acqYear}-${String(acqMonthNorm).padStart(2, '0')}-15`;
-      const cost = 500000 + (Math.random() * 5000000);
-      const supplier = ['Dell Uganda', 'HP East Africa', 'Simba Telecom', 'Office World'][i % 4];
-      const status = ['Active', 'In Storage', 'Under Maintenance'][i % 3];
-      
-      insertAsset.run(id, assetInfo.name, assetInfo.type, assetInfo.category, serial, condition, acqDate, cost, supplier, 'Procurement', status);
+    const suppliers = ['Dell Uganda', 'HP East Africa', 'Simba Telecom', 'Office World', 'Airtel Business', 'Samsung East Africa'];
+    const sources = ['Procurement', 'Donation', 'Lease'];
+    const conditions = ['New', 'Good', 'Refurbished'];
+    const statuses = ['Active', 'In Storage', 'Under Maintenance', 'Disposed'];
+
+    const currentYear = new Date().getFullYear();
+    const assetTotalToAdd = targetAssetCount - existingAssetCount;
+    const monthDistribution = [60, 45, 80, 35, 70, 50, 60]; // Jan–Jul distribution with ups and downs
+    let remainingToAdd = assetTotalToAdd;
+    let overallIndex = existingAssetCount;
+
+    for (let monthIdx = 0; monthIdx < monthDistribution.length && remainingToAdd > 0; monthIdx++) {
+      const month = monthIdx + 1;
+      const countForMonth = Math.min(monthDistribution[monthIdx], remainingToAdd);
+      for (let j = 0; j < countForMonth; j++) {
+        overallIndex += 1;
+        const assetInfo = assetTypes[(overallIndex - 1) % assetTypes.length];
+        const id = `URSB-AST-${String(overallIndex).padStart(4, '0')}`;
+        const serial = `SN-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+        const condition = conditions[overallIndex % conditions.length];
+        const day = 5 + ((overallIndex - 1) % 20);
+        const acquisitionDate = `${currentYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const cost = Math.round(500000 + Math.random() * 4500000);
+        const supplier = suppliers[overallIndex % suppliers.length];
+        const source = sources[overallIndex % sources.length];
+        const status = statuses[overallIndex % statuses.length];
+
+        insertAsset.run(id, assetInfo.name, assetInfo.type, assetInfo.category, serial, condition, acquisitionDate, cost, supplier, source, status);
+      }
+      remainingToAdd -= countForMonth;
     }
-    console.log('Sample assets created.');
+    console.log(`Seeded ${assetTotalToAdd} additional assets.`);
+  }
+
+  // Normalize acquisition dates for the retained 500 assets so the trend has an up/down pattern.
+  const finalAssetCount = db.prepare('SELECT COUNT(*) as count FROM assets').get().count;
+  if (finalAssetCount === targetAssetCount) {
+    const distribution = [60, 45, 80, 35, 70, 50, 60];
+    const assetsToUpdate = db.prepare('SELECT id FROM assets ORDER BY id ASC LIMIT ?').all(targetAssetCount);
+    const updateAssetDate = db.prepare('UPDATE assets SET acquisition_date = ? WHERE id = ?');
+    let updateIndex = 0;
+
+    for (let month = 1; month <= distribution.length; month++) {
+      const countForMonth = distribution[month - 1];
+      for (let i = 0; i < countForMonth && updateIndex < assetsToUpdate.length; i++, updateIndex++) {
+        const asset = assetsToUpdate[updateIndex];
+        const day = 5 + (updateIndex % 20);
+        const acquisitionDate = `${new Date().getFullYear()}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        updateAssetDate.run(acquisitionDate, asset.id);
+      }
+    }
+    console.log('Normalized acquisition dates for all 500 assets to create a varied monthly trend.');
   }
 
   // 2b. Backfill a maintenance record for every asset that is marked
