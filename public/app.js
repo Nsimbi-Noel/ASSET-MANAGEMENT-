@@ -166,6 +166,27 @@ function setupEventListeners() {
     });
   });
 
+  // Notification bell click-to-open / close behavior
+  const alertsIndicator = document.getElementById('alerts-indicator');
+  if (alertsIndicator) {
+    alertsIndicator.addEventListener('click', (e) => {
+      if (e.target.closest('.alert-item')) return;
+      alertsIndicator.classList.toggle('open');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#alerts-indicator')) {
+        alertsIndicator.classList.remove('open');
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        alertsIndicator.classList.remove('open');
+      }
+    });
+  }
+
   // Modal Submissions
   document.getElementById('register-asset-form').addEventListener('submit', submitRegisterAsset);
   document.getElementById('edit-asset-form').addEventListener('submit', submitEditAsset);
@@ -178,6 +199,7 @@ function setupEventListeners() {
   document.getElementById('create-request-form').addEventListener('submit', submitRequisition);
   document.getElementById('request-followup-form').addEventListener('submit', submitRequestFollowUp);
   document.getElementById('user-form').addEventListener('submit', submitUserForm);
+  document.getElementById('bulk-user-import-form').addEventListener('submit', submitBulkEmployeeImport);
   document.getElementById('change-password-form').addEventListener('submit', submitResetPassword);
   document.getElementById('change-own-password-form').addEventListener('submit', submitChangeOwnPassword);
 
@@ -965,7 +987,7 @@ function renderAssetTableRows(assets) {
       <td onclick="viewAssetDetails('${a.id}')">${a.type}</td>
       <td onclick="viewAssetDetails('${a.id}')">${a.serial_number}</td>
       <td onclick="viewAssetDetails('${a.id}')"><span class="status-badge active">${a.condition}</span></td>
-      <td onclick="viewAssetDetails('${a.id}')">${a.custodian_name ? `${a.custodian_name} (${a.custodian_department})` : '<span class="text-secondary">-</span>'}</td>
+      <td onclick="viewAssetDetails('${a.id}')">${a.assigned_to_name ? `${a.assigned_to_name} (${a.assigned_to_department})` : '<span class="text-secondary">-</span>'}</td>
       <td onclick="viewAssetDetails('${a.id}')"><span class="status-badge ${a.status.toLowerCase().replace(' ', '-')}">${a.status}</span></td>
       <td>
         <div style="display:flex; gap:0.25rem;">
@@ -1025,9 +1047,9 @@ function exportAssetRegisterCSV() {
   let csvContent = 'Asset ID,Asset Name,Type,Category,Serial Number,Condition,Acquisition Date,Cost (UGX),Supplier,Source,Assignee,Department,Status\n';
   
   cacheData.assets.forEach(a => {
-    const custodian = a.custodian_name ? a.custodian_name.replace(/"/g, '""') : '';
-    const dept = a.custodian_department ? a.custodian_department.replace(/"/g, '""') : '';
-    csvContent += `"${a.id}","${a.name.replace(/"/g, '""')}","${a.type}","${a.category}","${a.serial_number}","${a.condition}","${a.acquisition_date}",${a.cost},"${a.supplier.replace(/"/g, '""')}","${a.source}","${custodian}","${dept}","${a.status}"\n`;
+    const assignee = a.assigned_to_name ? a.assigned_to_name.replace(/"/g, '""') : '';
+    const dept = a.assigned_to_department ? a.assigned_to_department.replace(/"/g, '""') : '';
+    csvContent += `"${a.id}","${a.name.replace(/"/g, '""')}","${a.type}","${a.category}","${a.serial_number}","${a.condition}","${a.acquisition_date}",${a.cost},"${a.supplier.replace(/"/g, '""')}","${a.source}","${assignee}","${dept}","${a.status}"\n`;
   });
   
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -2220,7 +2242,10 @@ async function renderUsersView(container) {
     container.innerHTML = `
       <div class="view-actions-bar">
         <h3>System User Directories</h3>
-        <div>
+        <div style="display:flex; gap:0.75rem; flex-wrap: wrap;">
+          <button class="btn btn-secondary" onclick="openBulkEmployeeImportModal()">
+            Bulk Import Employees
+          </button>
           <button class="btn btn-primary" onclick="openCreateUserModal()">
             Create User Account
           </button>
@@ -2404,17 +2429,17 @@ async function viewAssetDetails(assetId) {
     document.getElementById('det-source').textContent = data.asset.source;
     
     // Assignee Details
-    const custodianBox = document.getElementById('det-current-custodian-box');
+    const assigneeBox = document.getElementById('det-current-assignee-box');
     const activeAssign = data.assignments.find(a => a.status === 'Active');
     
     if (activeAssign) {
-      custodianBox.style.display = 'block';
-      document.getElementById('det-custodian-name').textContent = activeAssign.custodian_name;
-      document.getElementById('det-custodian-dept').textContent = activeAssign.assigned_to_department || 'General';
-      document.getElementById('det-custodian-date').textContent = activeAssign.assignment_date;
-      document.getElementById('det-custodian-purpose').textContent = activeAssign.purpose || '-';
+      assigneeBox.style.display = 'block';
+      document.getElementById('det-assignee-name').textContent = activeAssign.assigned_to_name;
+      document.getElementById('det-assignee-dept').textContent = activeAssign.assigned_to_department || 'General';
+      document.getElementById('det-assignee-date').textContent = activeAssign.assignment_date;
+      document.getElementById('det-assignee-purpose').textContent = activeAssign.purpose || '-';
     } else {
-      custodianBox.style.display = 'none';
+      assigneeBox.style.display = 'none';
     }
     
     // Timeline history
@@ -2435,14 +2460,14 @@ async function viewAssetDetails(assetId) {
     data.assignments.forEach(a => {
       events.push({
         date: a.assignment_date,
-        title: `Asset Assigned to ${a.custodian_name}`,
+        title: `Asset Assigned to ${a.assigned_to_name}`,
         desc: `Authorized by ${a.manager_name}. Purpose: ${a.purpose || 'Not stated'} (${a.confirmed_receipt === 1 ? 'Receipt Confirmed' : 'Pending Confirmation'})`,
         class: 'assignment'
       });
       if (a.returned_date) {
         events.push({
           date: a.returned_date,
-          title: `Returned from ${a.custodian_name}`,
+          title: `Returned from ${a.assigned_to_name}`,
           desc: `Asset returned to inventory storage. Notes: ${a.notes || '-'}`,
           class: 'assignment'
         });
@@ -2453,7 +2478,7 @@ async function viewAssetDetails(assetId) {
     data.transfers.forEach(t => {
       events.push({
         date: t.transfer_date,
-        title: `Transferred Custodian`,
+        title: `Transferred Assignee`,
         desc: `Transferred from ${t.from_name} to ${t.to_name}. Reason: ${t.reason}. Authorized by ${t.manager_name}`,
         class: 'transfer'
       });
@@ -2671,12 +2696,16 @@ async function submitBulkImport() {
     });
     const data = await res.json();
     if (res.ok) {
+      const errorCount = data.errorCount || 0;
       resultDiv.innerHTML = `
         <div class="status-badge active" style="margin-bottom:0.5rem;">✓ ${data.imported} assets imported</div>
-        ${data.errors ? `<div class="status-badge rejected">${data.errors} errors</div>` : ''}
-        <div style="font-size:0.85rem; margin-top:0.5rem; max-height:200px; overflow-y:auto;">
+        ${errorCount ? `<div class="status-badge rejected">${errorCount} error${errorCount !== 1 ? 's' : ''}</div>` : ''}
+        ${data.assets.length ? `<div style="font-size:0.85rem; margin-top:0.5rem; max-height:200px; overflow-y:auto;">
           ${data.assets.map(a => `<div>${a.id} — ${a.name}</div>`).join('')}
-        </div>
+        </div>` : ''}
+        ${errorCount ? `<div style="font-size:0.85rem; margin-top:0.75rem; max-height:180px; overflow-y:auto;">
+          ${data.errors.map(err => `<div>Row ${err.row}: ${err.message}</div>`).join('')}
+        </div>` : ''}
       `;
       renderView('register');
     } else {
@@ -2731,17 +2760,17 @@ async function openAssignAssetModal() {
     // Load unassigned active assets
     const aRes = await fetch('/api/reports/register');
     const assets = await aRes.json();
-    const assignable = assets.filter(a => (a.status === 'Active' && !a.custodian_name) || a.status === 'In Storage');
+    const assignable = assets.filter(a => (a.status === 'Active' && !a.assigned_to_name) || a.status === 'In Storage');
     
     assetSelect.innerHTML = '<option value="">Select Asset to Assign</option>' + 
       assignable.map(a => `<option value="${a.id}">${a.id} - ${a.name} (${a.status})</option>`).join('');
       
-    // Load Active Custodians or employees
+    // Load active users
     const uRes = await fetch('/api/users');
     const users = await uRes.json();
     const activeUsers = users.filter(u => u.status === 'Active' && u.role !== 'Admin');
     
-    userSelect.innerHTML = '<option value="">Select Custodian</option>' + 
+    userSelect.innerHTML = '<option value="">Select Assignee</option>' + 
       activeUsers.map(u => `<option value="${u.id}">${u.name} (${formatRole(u.role)} - ${u.department})</option>`).join('');
       
   } catch (err) {
@@ -2797,16 +2826,16 @@ async function openTransferAssetModal() {
     // Load currently assigned active assets
     const aRes = await fetch('/api/reports/register');
     const assets = await aRes.json();
-    const assigned = assets.filter(a => a.status === 'Active' && a.custodian_name);
+    const assigned = assets.filter(a => a.status === 'Active' && a.assigned_to_name);
     
     assetSelect.innerHTML = '<option value="">Select Asset to Transfer</option>' + 
-      assigned.map(a => `<option value="${a.id}" data-custodian="${a.custodian_name} (${a.custodian_department})">${a.id} - ${a.name}</option>`).join('');
+      assigned.map(a => `<option value="${a.id}" data-assignee="${a.assigned_to_name} (${a.assigned_to_department})">${a.id} - ${a.name}</option>`).join('');
       
-    // Set change trigger to display current custodian
+    // Set change trigger to display current assignee
     assetSelect.onchange = () => {
       const selectedOption = assetSelect.options[assetSelect.selectedIndex];
-      const custInfo = selectedOption.getAttribute('data-custodian') || '';
-      document.getElementById('trans-current-custodian').value = custInfo;
+      const assigneeInfo = selectedOption.getAttribute('data-assignee') || '';
+      document.getElementById('trans-current-assignee').value = assigneeInfo;
     };
 
     // Load active users
@@ -2814,7 +2843,7 @@ async function openTransferAssetModal() {
     const users = await uRes.json();
     const activeUsers = users.filter(u => u.status === 'Active' && u.role !== 'Admin');
     
-    userSelect.innerHTML = '<option value="">Select Target Custodian</option>' + 
+    userSelect.innerHTML = '<option value="">Select Target Assignee</option>' + 
       activeUsers.map(u => `<option value="${u.id}">${u.name} (${formatRole(u.role)} - ${u.department})</option>`).join('');
   } catch (e) {
     assetSelect.innerHTML = '<option value="">Error loading list</option>';
@@ -3090,6 +3119,73 @@ function openCreateUserModal() {
   openModal('modal-manage-user');
 }
 
+function openBulkEmployeeImportModal() {
+  document.getElementById('bulk-user-import-form').reset();
+  document.getElementById('bulk-user-import-result').style.display = 'none';
+  openModal('modal-bulk-user-import');
+}
+
+async function submitBulkEmployeeImport(e) {
+  e.preventDefault();
+  const csvText = document.getElementById('bulk-user-csv').value.trim();
+  const resultDiv = document.getElementById('bulk-user-import-result');
+  resultDiv.style.display = 'block';
+
+  if (!csvText) {
+    resultDiv.innerHTML = '<div class="status-badge rejected">Paste CSV data first.</div>';
+    return;
+  }
+
+  const lines = csvText
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0 && !/^username\s*,/i.test(line));
+
+  const users = lines.map((line, idx) => {
+    const cols = line.split(',').map(c => c.trim());
+    return {
+      username: cols[0] || '',
+      password: cols[1] || '',
+      name: cols[2] || '',
+      department: cols[3] || 'General'
+    };
+  });
+
+  resultDiv.innerHTML = '<div class="status-badge active">Importing employees...</div>';
+
+  try {
+    const res = await fetch('/api/users/bulk-import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ users })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      resultDiv.innerHTML = `<div class="status-badge rejected">${data.error || 'Bulk import failed.'}</div>`;
+      return;
+    }
+
+    const successCount = data.imported || 0;
+    const errorCount = data.errorCount || 0;
+    const summary = `Imported ${successCount} employee${successCount !== 1 ? 's' : ''}`;
+
+    resultDiv.innerHTML = `
+      <div class="status-badge active">✓ ${summary}</div>
+      ${errorCount ? `<div class="status-badge rejected">${errorCount} row error${errorCount !== 1 ? 's' : ''}</div>` : ''}
+      ${data.users.length ? `<div style="margin-top:0.5rem; max-height:200px; overflow-y:auto;">
+        ${data.users.map(u => `<div>${u.username} — ${u.name}</div>`).join('')}
+      </div>` : ''}
+      ${errorCount ? `<div style="font-size:0.85rem; margin-top:0.75rem; max-height:180px; overflow-y:auto;">
+        ${data.errors.map(err => `<div>Row ${err.row}: ${err.message}</div>`).join('')}
+      </div>` : ''}
+    `;
+    renderView('users');
+  } catch (err) {
+    resultDiv.innerHTML = `<div class="status-badge rejected">Network error: ${err.message}</div>`;
+  }
+}
+
 function openEditUserModal(id) {
   const user = cacheData.users.find(u => u.id == id);
   if (!user) return;
@@ -3198,54 +3294,111 @@ async function loadUpcomingAlerts() {
   const countSpan = document.getElementById('alerts-count');
   const alertsList = document.getElementById('alerts-list');
   
+  if (!currentUser) return;
+
   try {
-    const res = await fetch('/api/reports/dashboard', { cache: 'no-cache' });
-    if (!res.ok) return;
-    const data = await res.json();
+    let notifications = [];
 
-    const readyItems = data.maintenanceReadyForReview || [];
-    const upcomingItems = data.upcomingMaintenance || [];
-    const count = readyItems.length + upcomingItems.length;
+    if (currentUser.role === 'AssetManager' || currentUser.role === 'Admin') {
+      const res = await fetch('/api/reports/dashboard', { cache: 'no-cache' });
+      if (!res.ok) return;
+      const data = await res.json();
 
+      const readyItems = data.maintenanceReadyForReview || [];
+      const upcomingItems = data.upcomingMaintenance || [];
+
+      notifications = readyItems.map(m => ({
+        type: 'maintenance-ready',
+        assetId: m.asset_id,
+        title: 'Maintenance Ready for Review',
+        detail: `Asset ${m.asset_id} (${m.asset_name}) was expected to finish servicing with ${m.service_provider} by ${m.expected_completion_date}.`,
+        action: 'maintenance',
+        payload: m
+      })).concat(upcomingItems.map(m => ({
+        type: 'maintenance-due',
+        assetId: m.asset_id,
+        title: 'Maintenance Due!',
+        detail: `Asset ${m.asset_id} (${m.asset_name}) is scheduled for servicing by ${m.service_provider} on ${m.next_service_date || m.service_date}.`,
+        action: 'maintenance',
+        payload: m
+      })));
+
+      if (currentUser.role === 'AssetManager') {
+        const readyItems = data.maintenanceReadyForReview || [];
+        readyItems.forEach(m => {
+          if (!notifiedReadyMaintenanceIds.has(m.id)) {
+            notifiedReadyMaintenanceIds.add(m.id);
+            showToast(`Maintenance for asset ${m.asset_id} (${m.asset_name}) is ready for your review.`, 'info');
+          }
+        });
+      }
+    } else {
+      const res = await fetch('/api/assignments', { cache: 'no-cache' });
+      if (!res.ok) return;
+      const assignments = await res.json();
+      notifications = assignments.filter(a => a.status === 'Active').map(a => ({
+        type: 'assignment',
+        assetId: a.asset_id,
+        title: 'Asset Assigned To You',
+        detail: `Asset ${a.asset_id} (${a.asset_name}) has been assigned to you by ${a.assigned_by_name} on ${a.assignment_date}.`,
+        action: 'assignment',
+        payload: a
+      }));
+    }
+
+    const count = notifications.length;
     if (count > 0) {
       badge.style.display = 'block';
-      countSpan.textContent = count;
-
-      const readyHtml = readyItems.map(m => `
-        <li>
-          <div class="alert-item-title text-danger">Maintenance Ready for Review</div>
-          <div class="alert-item-detail">
-            Asset <strong>${m.asset_id}</strong> (${m.asset_name}) was expected to finish servicing with ${m.service_provider} by <strong>${m.expected_completion_date}</strong>. Decide whether to close it out or extend it.
-          </div>
+      countSpan.textContent = count > 99 ? '99+' : String(count);
+      alertsList.innerHTML = notifications.map((note, index) => `
+        <li class="alert-item" role="menuitem" tabindex="0" data-action="${note.action}" data-asset-id="${note.assetId}" data-index="${index}">
+          <div class="alert-item-title ${note.type === 'maintenance-ready' ? 'text-danger' : ''}">${note.title}</div>
+          <div class="alert-item-detail">${note.detail}</div>
         </li>
       `).join('');
-
-      const upcomingHtml = upcomingItems.map(m => `
-        <li>
-          <div class="alert-item-title">Maintenance Due!</div>
-          <div class="alert-item-detail">
-            Asset <strong>${m.asset_id}</strong> (${m.asset_name}) is scheduled for servicing by ${m.service_provider} on <strong>${m.next_service_date || m.service_date}</strong>.
-          </div>
-        </li>
-      `).join('');
-
-      alertsList.innerHTML = readyHtml + upcomingHtml;
     } else {
       badge.style.display = 'none';
-      alertsList.innerHTML = '<li class="dropdown-empty">No critical alerts.</li>';
+      countSpan.textContent = '0';
+      alertsList.innerHTML = '<li class="dropdown-empty">No notifications.</li>';
     }
 
-    // Pop a toast the moment a job newly crosses into "ready for review", so the
-    // asset manager is notified proactively rather than only on-demand.
-    if (currentUser && currentUser.role === 'AssetManager') {
-      readyItems.forEach(m => {
-        if (!notifiedReadyMaintenanceIds.has(m.id)) {
-          notifiedReadyMaintenanceIds.add(m.id);
-          showToast(`Maintenance for asset ${m.asset_id} (${m.asset_name}) is ready for your review.`, 'info');
-        }
-      });
+    attachNotificationActions();
+  } catch (e) {
+    console.error('Failed to load alerts', e);
+  }
+}
+
+function attachNotificationActions() {
+  const items = document.querySelectorAll('#alerts-list .alert-item');
+  items.forEach(item => {
+    item.addEventListener('click', () => {
+      const action = item.dataset.action;
+      const assetId = item.dataset.assetId;
+      handleNotificationClick(action, assetId);
+    });
+    item.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        const action = item.dataset.action;
+        const assetId = item.dataset.assetId;
+        handleNotificationClick(action, assetId);
+      }
+    });
+  });
+}
+
+function handleNotificationClick(action, assetId) {
+  if (action === 'maintenance') {
+    if (assetId) {
+      viewAssetDetails(assetId);
     }
-  } catch(e) {}
+    navigateTo('maintenance');
+  } else if (action === 'assignment') {
+    if (assetId) {
+      viewAssetDetails(assetId);
+    }
+    navigateTo('assignments');
+  }
 }
 
 // Starts periodic polling so notifications appear while the manager stays logged

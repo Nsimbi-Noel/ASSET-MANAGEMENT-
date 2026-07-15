@@ -178,6 +178,13 @@ function initDb() {
 // Initialize database
 initDb();
 
+// Migration: Convert legacy custodian roles to Employee so old accounts stop using removed role names
+try {
+  db.exec("UPDATE users SET role = 'Employee' WHERE role IN ('Custodian', 'AssetCustodian')");
+} catch (e) {
+  // Ignore if the update fails for some reason
+}
+
 // Migration: Ensure requester_feedback and received_status exist in requests table for existing databases
 try {
   db.exec("ALTER TABLE requests ADD COLUMN requester_feedback TEXT");

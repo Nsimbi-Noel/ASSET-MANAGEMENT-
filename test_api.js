@@ -45,7 +45,7 @@ async function runTests() {
     // 3. Test Asset Assignment & Rule Enforcement
     console.log('\nTesting Asset Assignment & Rule Validation...');
     
-    // Assign the new asset to custodian (id 3)
+    // Assign the new asset to an assignee (id 3)
     const assignResult = controller.assignAsset(managerUser, {
       assetId: newAsset.id,
       assignedTo: 3,
@@ -58,7 +58,7 @@ async function runTests() {
     // Verify asset status changed to Active
     const updatedAsset = controller.getAsset(newAsset.id);
     assert.strictEqual(updatedAsset.status, 'Active', 'Asset status should change to Active upon assignment');
-    console.log(`${green}✓ Asset successfully assigned to custodian. Status changed to Active.${reset}`);
+    console.log(`${green}✓ Asset successfully assigned to assignee. Status changed to Active.${reset}`);
 
     // Test Rule: Prevent assigning an already assigned asset
     try {

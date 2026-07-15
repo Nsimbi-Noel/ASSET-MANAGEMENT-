@@ -215,13 +215,13 @@
           <div><strong>Source:</strong> <span id="det-source"></span></div>
         </div>
         
-        <div class="detail-section" id="det-current-custodian-box" style="display: none; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+        <div class="detail-section" id="det-current-assignee-box" style="display: none; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
           <h4>Current Assignee Details</h4>
           <div class="grid grid-2">
-            <div><strong>Assigned To:</strong> <span id="det-custodian-name"></span></div>
-            <div><strong>Department:</strong> <span id="det-custodian-dept"></span></div>
-            <div><strong>Assignment Date:</strong> <span id="det-custodian-date"></span></div>
-            <div><strong>Purpose:</strong> <span id="det-custodian-purpose"></span></div>
+            <div><strong>Assigned To:</strong> <span id="det-assignee-name"></span></div>
+            <div><strong>Department:</strong> <span id="det-assignee-dept"></span></div>
+            <div><strong>Assignment Date:</strong> <span id="det-assignee-date"></span></div>
+            <div><strong>Purpose:</strong> <span id="det-assignee-purpose"></span></div>
           </div>
         </div>
       </div>
@@ -456,7 +456,7 @@
           </select>
         </div>
         <div class="form-group">
-          <label for="assign-user-select">Assign To (Custodian)*</label>
+          <label for="assign-user-select">Assign To (Assignee)*</label>
           <select id="assign-user-select" required>
             <!-- Dynamically populated with active users -->
           </select>
@@ -484,7 +484,7 @@
   <!-- Modal: Transfer Asset -->
   <div class="modal" id="modal-transfer-asset" style="display: none;">
     <div class="modal-header">
-      <h3>Transfer Asset Custodian</h3>
+      <h3>Transfer Asset Assignee</h3>
       <button class="modal-close" onclick="closeModal('modal-transfer-asset')">&times;</button>
     </div>
     <form id="transfer-asset-form">
@@ -496,11 +496,11 @@
           </select>
         </div>
         <div class="form-group">
-          <label>Current Custodian / Department</label>
-          <input type="text" id="trans-current-custodian" disabled class="form-control-disabled">
+          <label>Current Assignee / Department</label>
+          <input type="text" id="trans-current-assignee" disabled class="form-control-disabled">
         </div>
         <div class="form-group">
-          <label for="trans-user-select">Transfer To (New Custodian)*</label>
+          <label for="trans-user-select">Transfer To (New Assignee)*</label>
           <select id="trans-user-select" required>
             <!-- Populated dynamically with active users -->
           </select>
@@ -599,7 +599,7 @@
       
       <div id="assign-user-section" style="display: none;">
         <div class="form-group">
-          <label for="complete-maint-assign-to">Assign To (Custodian)*</label>
+          <label for="complete-maint-assign-to">Assign To (Assignee)*</label>
           <select id="complete-maint-assign-to">
             <option value="">Select a user...</option>
           </select>
@@ -792,7 +792,6 @@
           <label for="usr-role">System Role*</label>
           <select id="usr-role" required>
             <option value="Employee">Employee (Asset Requesting)</option>
-            <!-- AssetCustodian role removed: assignees are regular users (Employees) -->
             <option value="AssetManager">Asset Manager (Full Inventory Operations)</option>
             <option value="Admin">System Administrator</option>
           </select>
@@ -812,6 +811,30 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-outline" onclick="closeModal('modal-manage-user')">Cancel</button>
         <button type="submit" class="btn btn-primary" id="usr-submit-btn">Create User</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Modal: Bulk Import Employees (Admin Only) -->
+  <div class="modal" id="modal-bulk-user-import" style="display: none;">
+    <div class="modal-header">
+      <h3>Bulk Import Employees</h3>
+      <button class="modal-close" onclick="closeModal('modal-bulk-user-import')">&times;</button>
+    </div>
+    <form id="bulk-user-import-form">
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="bulk-user-csv">Employee CSV Data</label>
+          <textarea id="bulk-user-csv" rows="8" placeholder="username,password,full name,department"></textarea>
+          <div class="text-secondary" style="font-size:0.85rem; margin-top:0.5rem;">
+            Paste employee rows without a header. Each row should include: <strong>username,password,name,department</strong>. Role will be set to <strong>Employee</strong> automatically.
+          </div>
+        </div>
+        <div class="form-group" id="bulk-user-import-result" style="display: none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-bulk-user-import')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Import Employees</button>
       </div>
     </form>
   </div>

@@ -318,7 +318,53 @@ function bulkRegisterAssets(reqUser, { assets }) {
     }
   }
 
-  return { success: true, imported: results.length, errors: errors.length, assets: results, errors };
+  return { success: true, imported: results.length, errorCount: errors.length, assets: results, errors };
+}
+
+function bulkCreateUsers(reqUser, { users }) {
+  if (reqUser.role !== 'Admin') throw new Error('Unauthorized');
+  if (!Array.isArray(users) || users.length === 0) {
+    throw new Error('Provide an array of user objects');
+  }
+
+  const results = [];
+  const errors = [];
+  const existingCheck = db.prepare('SELECT id FROM users WHERE username = ?');
+  const insert = db.prepare(`
+    INSERT INTO users (username, password, name, role, department, status)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+
+  for (let i = 0; i < users.length; i += 1) {
+    const data = users[i];
+    if (!data.username || !data.password || !data.name || !data.department) {
+      errors.push({ row: i + 1, message: 'Missing required fields (username, password, name, department)' });
+      continue;
+    }
+
+    if (existingCheck.get(data.username)) {
+      errors.push({ row: i + 1, message: 'Username already taken' });
+      continue;
+    }
+
+    try {
+      const result = insert.run(
+        data.username,
+        hashPassword(data.password),
+        data.name,
+        'Employee',
+        data.department,
+        data.status || 'Active'
+      );
+      const newId = result.lastInsertRowid;
+      logAudit(reqUser.id, reqUser.username, 'CREATE', 'users', String(newId), `Bulk imported user ${data.username} (Employee)`);
+      results.push({ id: newId, username: data.username, name: data.name, department: data.department, role: 'Employee' });
+    } catch (err) {
+      errors.push({ row: i + 1, message: err.message });
+    }
+  }
+
+  return { success: true, imported: results.length, errorCount: errors.length, users: results, errors };
 }
 
 // --- Asset Assignment & Transfers (Asset Manager) ---
@@ -934,7 +980,7 @@ function generateAssetRegister(filters = {}) {
   let queryStr = `
     SELECT a.*, 
            assign.assignment_date, assign.notes as assignment_notes, 
-           u.name as custodian_name, u.department as custodian_department
+           u.name as assigned_to_name, u.department as assigned_to_department
     FROM assets a
     LEFT JOIN assignments assign ON a.id = assign.asset_id AND assign.status = 'Active'
     LEFT JOIN users u ON assign.assigned_to = u.id
@@ -961,9 +1007,9 @@ function generateAssetRegister(filters = {}) {
     params.push(filters.department);
   }
   
-  if (filters.custodian) {
+  if (filters.assignedTo) {
     queryStr += ' AND u.id = ?';
-    params.push(filters.custodian);
+    params.push(filters.assignedTo);
   }
   
   queryStr += ' ORDER BY a.id ASC';
@@ -978,7 +1024,7 @@ function getAssetHistory(assetId) {
   
   // 1. Assignment history
   const assignmentsQuery = db.prepare(`
-    SELECT a.*, u1.name as custodian_name, u1.department as assigned_to_department, u2.name as manager_name
+    SELECT a.*, u1.name as assigned_to_name, u1.department as assigned_to_department, u2.name as manager_name
     FROM assignments a
     JOIN users u1 ON a.assigned_to = u1.id
     JOIN users u2 ON a.assigned_by = u2.id
@@ -1060,8 +1106,8 @@ async function generateAssetRegisterPdf(reqUser, filters) {
     cost: Number(asset.cost || 0).toLocaleString(undefined, { maximumFractionDigits: 0 }),
     supplier: asset.supplier,
     status: asset.status,
-    custodian_name: asset.custodian_name || '-',
-    custodian_department: asset.custodian_department || '-'
+    assigned_to_name: asset.assigned_to_name || '-',
+    assigned_to_department: asset.assigned_to_department || '-'
   }));
 
   try {
@@ -1069,7 +1115,7 @@ async function generateAssetRegisterPdf(reqUser, filters) {
       title: 'URSB Asset Register Report',
       logoBuffer,
       columns: ['Asset ID', 'Name', 'Type', 'Category', 'Serial No.', 'Condition', 'Acquisition Date', 'Cost (UGX)', 'Supplier', 'Status', 'Assignee', 'Department'],
-      columnKeys: ['id', 'name', 'type', 'category', 'serial_number', 'condition', 'acquisition_date', 'cost', 'supplier', 'status', 'custodian_name', 'custodian_department'],
+      columnKeys: ['id', 'name', 'type', 'category', 'serial_number', 'condition', 'acquisition_date', 'cost', 'supplier', 'status', 'assigned_to_name', 'assigned_to_department'],
       rows
     }, true);
   } catch (err) {
@@ -1097,6 +1143,7 @@ module.exports = {
   getSession,
   listUsers,
   createUser,
+  bulkCreateUsers,
   updateUser,
   changePassword,
   listAssets,

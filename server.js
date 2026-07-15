@@ -169,6 +169,10 @@ const server = http.createServer(async (req, res) => {
       if (pathname === '/api/users' && method === 'GET') {
         return sendJSON(res, controller.listUsers(user));
       }
+      if (pathname === '/api/users/bulk-import' && method === 'POST') {
+        const body = await parseBody(req);
+        return sendJSON(res, controller.bulkCreateUsers(user, body));
+      }
       if (pathname === '/api/users' && method === 'POST') {
         const body = await parseBody(req);
         return sendJSON(res, controller.createUser(user, body), 201);
@@ -315,7 +319,7 @@ const server = http.createServer(async (req, res) => {
           status: parsedUrl.query.status,
           type: parsedUrl.query.type,
           department: parsedUrl.query.department,
-          custodian: parsedUrl.query.custodian
+          assignedTo: parsedUrl.query.assignedTo
         };
         return sendJSON(res, controller.generateAssetRegister(filters));
       }
@@ -335,7 +339,7 @@ const server = http.createServer(async (req, res) => {
           status: parsedUrl.query.status,
           type: parsedUrl.query.type,
           department: parsedUrl.query.department,
-          custodian: parsedUrl.query.custodian
+          assignedTo: parsedUrl.query.assignedTo
         };
         const pdfBuffer = await controller.generateAssetRegisterPdf(user, filters);
         res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="asset_register.pdf"' });
