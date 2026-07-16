@@ -114,7 +114,17 @@ function setupEventListeners() {
   document.getElementById('login-form').addEventListener('submit', handleLogin);
   
   // Logout Button
-  document.getElementById('logout-btn').addEventListener('click', handleLogout);
+  document.getElementById('logout-btn').addEventListener('click', function() {
+  document.getElementById('logout-btn').style.display = 'none';
+  document.getElementById('logout-confirm').style.display = 'block';
+});
+
+document.getElementById('logout-cancel').addEventListener('click', function() {
+  document.getElementById('logout-btn').style.display = 'block';
+  document.getElementById('logout-confirm').style.display = 'none';
+});
+
+document.getElementById('logout-yes').addEventListener('click', handleLogout);
 
   // ── Sidebar collapse (desktop) ──
   const appLayout    = document.getElementById('app-container');
