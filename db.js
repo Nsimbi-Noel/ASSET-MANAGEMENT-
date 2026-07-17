@@ -55,6 +55,7 @@ function initDb() {
       assigned_to INTEGER REFERENCES users(id),
       assigned_by INTEGER REFERENCES users(id),
       assignment_date TEXT NOT NULL,
+      contract_end_date TEXT,
       purpose TEXT,
       notes TEXT,
       confirmed_receipt INTEGER DEFAULT 0, -- 0 = No, 1 = Yes
@@ -204,6 +205,13 @@ try {
   db.exec("ALTER TABLE maintenance ADD COLUMN estimated_duration_days INTEGER");
 } catch (e) {
   // Column might already exist
+}
+
+// Migration: add contract_end_date to assignments if missing
+try {
+  db.exec("ALTER TABLE assignments ADD COLUMN contract_end_date TEXT;");
+} catch (e) {
+  // ignore if already present
 }
 try {
   db.exec("ALTER TABLE maintenance ADD COLUMN expected_completion_date TEXT");

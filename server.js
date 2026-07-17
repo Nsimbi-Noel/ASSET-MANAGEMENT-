@@ -225,6 +225,12 @@ const server = http.createServer(async (req, res) => {
         const body = await parseBody(req);
         return sendJSON(res, controller.assignAsset(user, body));
       }
+      const assignExtendMatch = pathname.match(/^\/api\/assignments\/(\d+)\/extend$/);
+      if (assignExtendMatch && method === 'PUT') {
+        const assignId = assignExtendMatch[1];
+        const body = await parseBody(req);
+        return sendJSON(res, controller.extendContract(user, assignId, body));
+      }
       
       const assignReturnMatch = pathname.match(/^\/api\/assignments\/(\d+)\/return$/);
       if (assignReturnMatch && method === 'PUT') {

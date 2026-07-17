@@ -428,11 +428,15 @@ function assignAsset(reqUser, { assetId, assignedTo, assignmentDate, purpose, no
   db.exec('BEGIN TRANSACTION');
   try {
     // 1. Insert assignment
+    // Default contract length = 5 years
+    const contractEnd = new Date(assignmentDate);
+    contractEnd.setFullYear(contractEnd.getFullYear() + 5);
+    const contractEndStr = contractEnd.toISOString().split('T')[0];
     const insert = db.prepare(`
-      INSERT INTO assignments (asset_id, assigned_to, assigned_by, assignment_date, purpose, notes, confirmed_receipt, status)
-      VALUES (?, ?, ?, ?, ?, ?, 0, 'Active')
+      INSERT INTO assignments (asset_id, assigned_to, assigned_by, assignment_date, contract_end_date, purpose, notes, confirmed_receipt, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'Active')
     `);
-    const result = insert.run(assetId, assignedTo, reqUser.id, assignmentDate, purpose, notes);
+    const result = insert.run(assetId, assignedTo, reqUser.id, assignmentDate, contractEndStr, purpose, notes);
     
     // 2. Set asset status to Active
     const updateAsset = db.prepare("UPDATE assets SET status = 'Active' WHERE id = ?");
@@ -484,6 +488,20 @@ function returnAsset(reqUser, assignmentId, { returnedDate }) {
     db.exec('ROLLBACK');
     throw err;
   }
+}
+
+// Extend or renew a contract (AssetManager only)
+function extendContract(reqUser, assignmentId, { newEndDate }) {
+  if (reqUser.role !== 'AssetManager') throw new Error('Unauthorized');
+  if (!newEndDate) throw new Error('New end date required');
+  const query = db.prepare('SELECT * FROM assignments WHERE id = ?');
+  const assignment = query.get(assignmentId);
+  if (!assignment) throw new Error('Assignment not found');
+
+  const update = db.prepare('UPDATE assignments SET contract_end_date = ? WHERE id = ?');
+  update.run(newEndDate, assignmentId);
+  logAudit(reqUser.id, reqUser.username, 'UPDATE', 'assignments', String(assignmentId), `Extended contract for ${assignment.asset_id} to ${newEndDate}`);
+  return { success: true };
 }
 
 function confirmReceipt(reqUser, assignmentId) {

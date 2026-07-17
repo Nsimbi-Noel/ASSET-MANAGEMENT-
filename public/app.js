@@ -12,6 +12,9 @@ let cacheData = {
   audits: []
 };
 
+// Holds the last dashboard report data so charts can be redrawn on theme change
+let lastDashboardReports = null;
+
 // Holds a one-time filter to apply to the next view we navigate into
 // (e.g. clicking a dashboard metric card jumps to a view pre-filtered
 // to match that metric). Consumed and cleared by the destination view's
@@ -23,6 +26,98 @@ let pendingViewFilter = null;
 // (mirrors the click-to-filter pattern used by the Maintenance page cards).
 let myAssetsRawData = { assignments: [], requests: [] };
 let myAssetsFilterType = 'all';
+
+// ================= COLOR / THEME HELPERS =================
+function cssVar(name, fallback) {
+  try {
+    const v = getComputedStyle(document.body).getPropertyValue(name).trim();
+    return v || fallback;
+  } catch (e) { return fallback; }
+}
+
+function hslaFrom(colorStr, alpha) {
+  if (!colorStr) return `rgba(10,68,142,${alpha})`;
+  colorStr = colorStr.trim();
+  if (colorStr.startsWith('hsl(')) return colorStr.replace(/^hsl\(/, 'hsla(').replace(/\)\s*$/, `, ${alpha})`);
+  if (colorStr.startsWith('rgb(')) return colorStr.replace(/^rgb\(/, 'rgba(').replace(/\)\s*$/, `, ${alpha})`);
+  if (colorStr[0] === '#') {
+    const hex = colorStr.substring(1);
+    const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex;
+    const bigint = parseInt(full, 16);
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  return colorStr;
+}
+
+// Parse color strings (hex, rgb(a), hsl(a)) into RGBA object
+function parseColor(colorStr) {
+  if (!colorStr) return { r: 10, g: 68, b: 142, a: 1 };
+  colorStr = colorStr.trim();
+  // rgb/rgba
+  const rgbMatch = colorStr.match(/rgba?\(([^)]+)\)/i);
+  if (rgbMatch) {
+    const parts = rgbMatch[1].split(',').map(p => p.trim());
+    return {
+      r: parseFloat(parts[0]) || 0,
+      g: parseFloat(parts[1]) || 0,
+      b: parseFloat(parts[2]) || 0,
+      a: parts[3] !== undefined ? parseFloat(parts[3]) : 1
+    };
+  }
+  // hsl/hsla
+  const hslMatch = colorStr.match(/hsla?\(([^)]+)\)/i);
+  if (hslMatch) {
+    const parts = hslMatch[1].split(',').map(p => p.trim());
+    const h = parseFloat(parts[0]);
+    const s = parseFloat(parts[1]) / 100;
+    const l = parseFloat(parts[2]) / 100;
+    const a = parts[3] !== undefined ? parseFloat(parts[3]) : 1;
+    // convert HSL to RGB
+    function hue2rgb(p, q, t){ if(t<0) t+=1; if(t>1) t-=1; if(t<1/6) return p+(q-p)*6*t; if(t<1/2) return q; if(t<2/3) return p+(q-p)*(2/3-t)*6; return p; }
+    let r, g, b;
+    if (s === 0) { r = g = b = l; } else {
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, (h / 360) + 1/3);
+      g = hue2rgb(p, q, (h / 360));
+      b = hue2rgb(p, q, (h / 360) - 1/3);
+    }
+    return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255), a };
+  }
+  // hex
+  if (colorStr[0] === '#') {
+    const hex = colorStr.substring(1);
+    const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex;
+    const bigint = parseInt(full, 16);
+    return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255, a: 1 };
+  }
+  // fallback: try to let browser compute it
+  const tmp = document.createElement('div');
+  tmp.style.color = colorStr;
+  document.body.appendChild(tmp);
+  const cs = getComputedStyle(tmp).color;
+  document.body.removeChild(tmp);
+  const m = cs.match(/rgba?\(([^)]+)\)/i);
+  if (m) {
+    const p = m[1].split(',').map(x => parseFloat(x.trim()));
+    return { r: p[0]||0, g: p[1]||0, b: p[2]||0, a: p[3]!==undefined? p[3]:1 };
+  }
+  return { r: 10, g: 68, b: 142, a: 1 };
+}
+
+function rgbaToStr(c) { return `rgba(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)}, ${c.a})`; }
+
+function blendColors(a, b, t) {
+  return {
+    r: a.r + (b.r - a.r) * t,
+    g: a.g + (b.g - a.g) * t,
+    b: a.b + (b.b - a.b) * t,
+    a: a.a + (b.a - a.a) * t
+  };
+}
 
 // Document Ready
 document.addEventListener('DOMContentLoaded', () => {
@@ -36,6 +131,8 @@ let loginInProgress = false;
 
 async function initApp() {
   setupEventListeners();
+  // Apply previously selected theme (or system preference) as early as possible
+  loadThemeFromStorage();
   if (!loginInProgress) {
     await checkSession();
   }
@@ -113,8 +210,19 @@ function setupEventListeners() {
   // Login Form
   document.getElementById('login-form').addEventListener('submit', handleLogin);
   
-  // Logout Button
-  document.getElementById('logout-btn').addEventListener('click', handleLogout);
+  // Logout Button — show confirmation modal first
+  const logoutBtn = document.getElementById('logout-btn');
+  if (logoutBtn) logoutBtn.addEventListener('click', () => openModal('modal-logout-confirm'));
+  // Theme toggle
+  const themeToggleBtn = document.getElementById('theme-toggle-btn');
+  if (themeToggleBtn) {
+    themeToggleBtn.addEventListener('click', () => {
+      const next = document.body.classList.contains('dark-mode') ? 'light' : 'dark';
+      applyTheme(next);
+    });
+    // Set initial button label
+    updateThemeToggleButton();
+  }
 
   // ── Sidebar collapse (desktop) ──
   const appLayout    = document.getElementById('app-container');
@@ -545,8 +653,10 @@ async function renderDashboardView(container) {
     `;
     
     // Draw canvas charts offline-ready
-    renderTrendChart('chartStatus', data.acquisitionTrend);
-    renderCategoryChart('chartCategory', data.categoryDistribution);
+      // Cache data for possible redraws on theme change
+      lastDashboardReports = data;
+      renderTrendChart('chartStatus', data.acquisitionTrend);
+      renderCategoryChart('chartCategory', data.categoryDistribution);
     
   } catch (err) {
     container.innerHTML = `<div class="warning-banner">${err.message}</div>`;
@@ -599,7 +709,7 @@ function _bucketTrendByWeek(trend) {
 }
 
 // Draw Asset Acquisition Trend Line Chart with Smooth Curves (bezier)
-function renderTrendChart(canvasId, trend) {
+function renderTrendChart(canvasId, trend, overrides = null) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
 
@@ -616,13 +726,17 @@ function renderTrendChart(canvasId, trend) {
 
   ctx.clearRect(0, 0, cssWidth, cssHeight);
 
+  const getCol = (varName, fallback) => (overrides && overrides[varName]) ? overrides[varName] : cssVar(varName, fallback);
+
+  
+
   // Bucket daily data into weekly chunks when there are many points, so the
   // line has visible curvature rather than a flat stair-step.
   const dataPoints = _bucketTrendByWeek(trend);
 
   if (!dataPoints || dataPoints.length === 0) {
     ctx.font = '14px Outfit';
-    ctx.fillStyle = '#718096';
+    ctx.fillStyle = getCol('--text-secondary', '#718096');
     ctx.fillText('No acquisition data to display', 40, 100);
     return;
   }
@@ -635,17 +749,21 @@ function renderTrendChart(canvasId, trend) {
   const maxVal = Math.max(...values, 1);
   const minVal = 0;
 
-  // Draw enhanced background with subtle gradient
+  // Draw enhanced background with subtle gradient (theme-aware)
+  const bgTop = hslaFrom(getCol('--bg-color', 'hsl(215,25%,98%)'), 0.95);
+  const bgBottom = hslaFrom(getCol('--card-bg', '#ffffff'), 0.9);
   const bgGradient = ctx.createLinearGradient(0, padding.top, 0, cssHeight - padding.bottom);
-  bgGradient.addColorStop(0, 'rgba(248, 250, 252, 0.8)');
-  bgGradient.addColorStop(1, 'rgba(240, 245, 250, 0.3)');
+  bgGradient.addColorStop(0, bgTop);
+  bgGradient.addColorStop(1, bgBottom);
   ctx.fillStyle = bgGradient;
   ctx.fillRect(padding.left, padding.top, chartWidth, chartHeight);
 
   // Axes with enhanced styling and gradient
+  const axisTop = hslaFrom(getCol('--text-secondary', '#a0aec0'), 0.9);
+  const axisBottom = hslaFrom(getCol('--border-color', '#cbd5e0'), 0.7);
   const axisGradient = ctx.createLinearGradient(0, padding.top, 0, cssHeight - padding.bottom);
-  axisGradient.addColorStop(0, '#a0aec0');
-  axisGradient.addColorStop(1, '#cbd5e0');
+  axisGradient.addColorStop(0, axisTop);
+  axisGradient.addColorStop(1, axisBottom);
   ctx.strokeStyle = axisGradient;
   ctx.lineWidth = 2.5;
   ctx.beginPath();
@@ -657,13 +775,15 @@ function renderTrendChart(canvasId, trend) {
   // Gridlines + Y labels with enhanced styling
   const ySteps = 4;
   ctx.font = 'bold 11px Outfit';
-  ctx.fillStyle = '#718096';
+  ctx.fillStyle = cssVar('--text-secondary', '#718096');
   for (let s = 0; s <= ySteps; s++) {
     const val = Math.round((maxVal / ySteps) * s);
     const y = cssHeight - padding.bottom - (val / maxVal) * chartHeight;
 
-    // Alternating gridline opacity for better readability
-    ctx.strokeStyle = s % 2 === 0 ? '#e2e8f0' : '#f0f4f8';
+    // Alternating gridline opacity for better readability (theme aware)
+    const gridLight = hslaFrom(getCol('--border-color', '#e2e8f0'), 1);
+    const gridAlt = hslaFrom(getCol('--bg-color', '#f0f4f8'), 0.8);
+    ctx.strokeStyle = s % 2 === 0 ? gridLight : gridAlt;
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
@@ -672,10 +792,10 @@ function renderTrendChart(canvasId, trend) {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Y-axis label with background
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    // Y-axis label with background (use card background)
+    ctx.fillStyle = hslaFrom(getCol('--card-bg', '#ffffff'), 0.95);
     ctx.fillRect(2, y - 8, 30, 14);
-    ctx.fillStyle = '#4a5568';
+    ctx.fillStyle = getCol('--text-secondary', '#4a5568');
     ctx.fillText(val, 8, y + 3);
   }
 
@@ -688,11 +808,16 @@ function renderTrendChart(canvasId, trend) {
   });
 
   // Create enhanced gradient for area fill
+  // Create enhanced gradient for area fill from primary brand color
+  const primary = getCol('--ursb-blue', 'hsl(215,95%,28%)');
   const gradient = ctx.createLinearGradient(0, padding.top, 0, cssHeight - padding.bottom);
-  gradient.addColorStop(0, 'rgba(45, 122, 196, 0.35)');
-  gradient.addColorStop(0.5, 'rgba(30, 91, 168, 0.15)');
-  gradient.addColorStop(1, 'rgba(10, 68, 142, 0.02)');
-
+  gradient.addColorStop(0, hslaFrom(primary, 0.35));
+  gradient.addColorStop(0.5, hslaFrom(primary, 0.15));
+  gradient.addColorStop(1, hslaFrom(primary, 0.02));
+  // Determine dark-mode heuristics to tune shadows/alphas
+  const bgForLuma = parseColor(getCol('--bg-color', 'hsl(215,25%,98%)'));
+  const luma = 0.2126 * bgForLuma.r + 0.7152 * bgForLuma.g + 0.0722 * bgForLuma.b;
+  const isDark = luma < 128;
   // Fill area under SMOOTH line with gradient
   ctx.beginPath();
   ctx.moveTo(points[0].x, cssHeight - padding.bottom);
@@ -724,17 +849,24 @@ function renderTrendChart(canvasId, trend) {
   ctx.fillStyle = gradient;
   ctx.fill();
 
-  // Draw SMOOTH line with enhanced shadow effect
-  ctx.shadowColor = 'rgba(10, 68, 142, 0.25)';
-  ctx.shadowBlur = 8;
+  // Draw SMOOTH line with tuned shadow effect (reduced in dark mode)
+  const lineShadowAlpha = isDark ? 0.18 : 0.25;
+  const lineShadowBlur = isDark ? 5 : 8;
+  const lineShadowOffsetY = isDark ? 2 : 3;
+  ctx.shadowColor = hslaFrom(getCol('--ursb-blue-dark', 'rgba(10,68,142,1)'), lineShadowAlpha);
+  ctx.shadowBlur = lineShadowBlur;
   ctx.shadowOffsetX = 0;
-  ctx.shadowOffsetY = 3;
+  ctx.shadowOffsetY = lineShadowOffsetY;
 
   // Create gradient for line color
   const lineGradient = ctx.createLinearGradient(points[0].x, 0, points[points.length - 1].x, 0);
-  lineGradient.addColorStop(0, '#0a448e');
-  lineGradient.addColorStop(0.5, '#1e5ba8');
-  lineGradient.addColorStop(1, '#2d7ac4');
+  // Line gradient from brand blue shades
+  const blueDark = getCol('--ursb-blue-dark', '#0a448e');
+  const blue = getCol('--ursb-blue', '#1e5ba8');
+  const blueLight = getCol('--ursb-blue-light', '#2d7ac4');
+  lineGradient.addColorStop(0, blueDark);
+  lineGradient.addColorStop(0.5, blue);
+  lineGradient.addColorStop(1, blueLight);
 
   ctx.beginPath();
   if (points.length === 1) {
@@ -771,31 +903,33 @@ function renderTrendChart(canvasId, trend) {
     for (let i = 3; i > 0; i--) {
       ctx.beginPath();
       ctx.arc(p.x, p.y, 7 + i, 0, 2 * Math.PI);
-      ctx.fillStyle = `rgba(10, 68, 142, ${0.08 / i})`;
+      const outerAlphaBase = isDark ? 0.14 : 0.08;
+      ctx.fillStyle = hslaFrom(getCol('--ursb-blue-dark', '#0a448e'), outerAlphaBase / i);
       ctx.fill();
     }
 
     // Inner circle with gradient
     const pointGradient = ctx.createRadialGradient(p.x - 2, p.y - 2, 0, p.x, p.y, 5);
-    pointGradient.addColorStop(0, '#2d7ac4');
-    pointGradient.addColorStop(1, '#0a448e');
+    pointGradient.addColorStop(0, getCol('--ursb-blue-light', '#2d7ac4'));
+    pointGradient.addColorStop(1, getCol('--ursb-blue-dark', '#0a448e'));
     ctx.beginPath();
     ctx.arc(p.x, p.y, 5, 0, 2 * Math.PI);
     ctx.fillStyle = pointGradient;
     ctx.fill();
 
     // White center dot with shadow
-    ctx.shadowColor = 'rgba(10, 68, 142, 0.3)';
-    ctx.shadowBlur = 3;
+    // Inner white center dot shadow - softened in dark mode
+    ctx.shadowColor = hslaFrom(getCol('--ursb-blue-dark', '#0a448e'), isDark ? 0.22 : 0.3);
+    ctx.shadowBlur = isDark ? 2 : 3;
     ctx.beginPath();
     ctx.arc(p.x, p.y, 2.5, 0, 2 * Math.PI);
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = getCol('--card-bg', '#ffffff');
     ctx.fill();
     ctx.shadowColor = 'transparent';
 
     // Value label above point with enhanced background
     ctx.font = 'bold 12px Outfit';
-    ctx.fillStyle = '#1a202c';
+    ctx.fillStyle = getCol('--text-primary', '#1a202c');
     ctx.textAlign = 'center';
     const labelY = p.y - 20;
 
@@ -803,23 +937,23 @@ function renderTrendChart(canvasId, trend) {
     ctx.shadowColor = 'rgba(0, 0, 0, 0.1)';
     ctx.shadowBlur = 3;
     ctx.shadowOffsetY = 1;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
+    ctx.fillStyle = hslaFrom(getCol('--card-bg', '#ffffff'), 0.98);
     ctx.fillRect(p.x - 18, labelY - 11, 36, 18);
     ctx.shadowColor = 'transparent';
 
     // Border for label
-    ctx.strokeStyle = 'rgba(10, 68, 142, 0.15)';
+    ctx.strokeStyle = hslaFrom(getCol('--ursb-blue-dark', '#0a448e'), 0.15);
     ctx.lineWidth = 1;
     ctx.strokeRect(p.x - 18, labelY - 11, 36, 18);
 
     // Label text
-    ctx.fillStyle = '#0a448e';
+    ctx.fillStyle = getCol('--ursb-blue-dark', '#0a448e');
     ctx.font = 'bold 11px Outfit';
     ctx.fillText(p.value, p.x, labelY + 3);
 
     // Date label below axis — show MM-DD for weekly buckets, YY-MM-DD for daily
     ctx.font = '10px Outfit';
-    ctx.fillStyle = '#4a5568';
+    ctx.fillStyle = getCol('--text-secondary', '#4a5568');
     const label = p.label ? p.label.substring(0, 10) : ''; // YYYY-MM-DD
     const displayLabel = label.length >= 10 ? label.substring(5) : label.substring(2); // MM-DD or YY-MM
     ctx.fillText(displayLabel, p.x, cssHeight - padding.bottom + 20);
@@ -828,16 +962,17 @@ function renderTrendChart(canvasId, trend) {
 }
 
 // Draw Category Bar Chart
-function renderCategoryChart(canvasId, distributions) {
+function renderCategoryChart(canvasId, distributions, overrides = null) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
+  const getCol = (varName, fallback) => (overrides && overrides[varName]) ? overrides[varName] : cssVar(varName, fallback);
+
   if (distributions.length === 0) {
     ctx.font = '14px Outfit';
-    ctx.fillStyle = '#718096';
+    ctx.fillStyle = getCol('--text-secondary', '#718096');
     ctx.fillText('No asset categories to display', 40, 100);
     return;
   }
@@ -849,8 +984,8 @@ function renderCategoryChart(canvasId, distributions) {
   // Find max value
   const maxVal = Math.max(...distributions.map(d => d.count), 5);
   
-  // Draw axis lines
-  ctx.strokeStyle = '#e2e8f0';
+  // Draw axis lines (theme-aware)
+  ctx.strokeStyle = hslaFrom(getCol('--border-color', '#e2e8f0'), 1);
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(padding, padding);
@@ -867,18 +1002,18 @@ function renderCategoryChart(canvasId, distributions) {
     const x = padding + gap + i * (barWidth + gap);
     const y = canvas.height - padding - barHeight;
     
-    // Draw Bar
-    ctx.fillStyle = '#0a448e';
+    // Draw Bar (theme primary)
+    ctx.fillStyle = getCol('--ursb-blue', '#0a448e');
     ctx.fillRect(x, y, barWidth, barHeight);
     
     // Draw Label (vertical or truncated)
     ctx.font = '11px Outfit';
-    ctx.fillStyle = '#4a5568';
+    ctx.fillStyle = getCol('--text-secondary', '#4a5568');
     const shortCat = d.category.length > 8 ? d.category.substring(0, 7) + '..' : d.category;
     ctx.fillText(shortCat, x - 2, canvas.height - padding + 15);
     
     // Draw Value on Top
-    ctx.fillStyle = '#1a202c';
+    ctx.fillStyle = getCol('--text-primary', '#1a202c');
     ctx.font = 'bold 11px Outfit';
     ctx.fillText(d.count, x + barWidth / 2 - 4, y - 6);
   }
@@ -2401,6 +2536,86 @@ function closeAllModals() {
   document.getElementById('modal-backdrop').style.display = 'none';
 }
 
+// ================= THEME HANDLING =================
+function applyTheme(theme) {
+  const vars = ['--ursb-blue','--ursb-blue-dark','--ursb-blue-light','--card-bg','--bg-color','--text-primary','--text-secondary','--border-color'];
+  const before = getComputedStyle(document.body);
+  const startPalette = {};
+  vars.forEach(v => startPalette[v] = (before.getPropertyValue(v) || '').trim() || null);
+
+  // apply class immediately so CSS variables for the target theme are available
+  if (theme === 'dark') {
+    document.body.classList.add('dark-mode');
+    document.body.classList.remove('light-mode');
+  } else {
+    document.body.classList.remove('dark-mode');
+    document.body.classList.add('light-mode');
+  }
+
+  const after = getComputedStyle(document.body);
+  const endPalette = {};
+  vars.forEach(v => endPalette[v] = (after.getPropertyValue(v) || '').trim() || null);
+
+  // animate palette interpolation so charts smoothly transition
+  const duration = 360;
+  const start = performance.now();
+  function step(now) {
+    const tRaw = Math.min(1, (now - start) / duration);
+    // ease in-out cubic
+    const t = tRaw < 0.5 ? 4*tRaw*tRaw*tRaw : 1 - Math.pow(-2*tRaw + 2, 3) / 2;
+    const overrides = {};
+    vars.forEach(v => {
+      const a = parseColor(startPalette[v] || endPalette[v] || cssVar(v, ''));
+      const b = parseColor(endPalette[v] || startPalette[v] || cssVar(v, ''));
+      const blended = blendColors(a, b, t);
+      overrides[v] = rgbaToStr(blended);
+    });
+    try { refreshCharts(overrides); } catch(e) {}
+    if (tRaw < 1) {
+      requestAnimationFrame(step);
+    } else {
+      try { localStorage.setItem('theme', theme); } catch(e) {}
+      updateThemeToggleButton();
+      try { refreshCharts(); } catch(e) {}
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+function refreshCharts(overrides = null) {
+  if (!lastDashboardReports) return;
+  if (document.getElementById('chartStatus')) {
+    renderTrendChart('chartStatus', lastDashboardReports.acquisitionTrend, overrides);
+  }
+  if (document.getElementById('chartCategory')) {
+    renderCategoryChart('chartCategory', lastDashboardReports.categoryDistribution, overrides);
+  }
+}
+
+function loadThemeFromStorage() {
+  try {
+    const saved = localStorage.getItem('theme');
+    if (saved === 'dark' || saved === 'light') {
+      applyTheme(saved);
+      return;
+    }
+  } catch(e) {}
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  applyTheme(prefersDark ? 'dark' : 'light');
+}
+
+function updateThemeToggleButton() {
+  const btn = document.getElementById('theme-toggle-btn');
+  if (!btn) return;
+  const dark = document.body.classList.contains('dark-mode');
+  const sunSvg = '<svg class="theme-icon" viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="4" fill="currentColor"/><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M4.93 19.07l1.41-1.41"/><path d="M17.66 6.34l1.41-1.41"/></g></svg>';
+  const moonSvg = '<svg class="theme-icon" viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" fill="currentColor"/></svg>';
+  const label = dark ? 'Light Mode' : 'Dark Mode';
+  const title = dark ? 'Switch to light theme' : 'Switch to dark theme';
+  btn.innerHTML = `${dark ? sunSvg : moonSvg}<span class="theme-label">${label}</span>`;
+  btn.title = title;
+}
+
 // 1. View Asset Details & History
 async function viewAssetDetails(assetId) {
   try {
@@ -3336,7 +3551,11 @@ async function loadUpcomingAlerts() {
       const res = await fetch('/api/assignments', { cache: 'no-cache' });
       if (!res.ok) return;
       const assignments = await res.json();
-      notifications = assignments.filter(a => a.status === 'Active').map(a => ({
+
+      // For regular users, show assignment notices. Also show upcoming contract reminders
+      const userAssignments = assignments.filter(a => a.status === 'Active' && a.assigned_to === currentUser.id);
+
+      const assignmentNotes = userAssignments.map(a => ({
         type: 'assignment',
         assetId: a.asset_id,
         title: 'Asset Assigned To You',
@@ -3344,6 +3563,27 @@ async function loadUpcomingAlerts() {
         action: 'assignment',
         payload: a
       }));
+
+      // Contract reminders: within 30 days or expired
+      const contractReminders = userAssignments.reduce((acc, a) => {
+        if (!a.contract_end_date) return acc;
+        const end = new Date(a.contract_end_date + 'T00:00:00');
+        const now = new Date();
+        const diffDays = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+        if (diffDays <= 30) {
+          acc.push({
+            type: diffDays < 0 ? 'contract-expired' : 'contract-reminder',
+            assetId: a.asset_id,
+            title: diffDays < 0 ? 'Contract Expired' : 'Contract Ending Soon',
+            detail: diffDays < 0 ? `Your contract for ${a.asset_id} (${a.asset_name}) ended on ${a.contract_end_date}. Please contact Asset Manager.` : `Your contract for ${a.asset_id} (${a.asset_name}) ends in ${diffDays} day(s) on ${a.contract_end_date}.`,
+            action: 'assignment',
+            payload: a
+          });
+        }
+        return acc;
+      }, []);
+
+      notifications = assignmentNotes.concat(contractReminders);
     }
 
     const count = notifications.length;
@@ -3397,6 +3637,9 @@ function handleNotificationClick(action, assetId) {
     if (assetId) {
       viewAssetDetails(assetId);
     }
+    navigateTo('assignments');
+  } else if (action === 'contract-return') {
+    // Open assignments view so user can see return flow (AssetManager will handle actual return)
     navigateTo('assignments');
   }
 }

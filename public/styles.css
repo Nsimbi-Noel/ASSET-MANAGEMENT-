@@ -52,6 +52,20 @@
   --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Dark theme variable overrides — toggled by adding `dark-mode` to the <body> */
+.dark-mode {
+  --bg-color: hsl(210, 22%, 8%);
+  --card-bg: hsl(210, 24%, 10%);
+  --text-primary: hsl(210, 30%, 96%);
+  --text-secondary: hsl(210, 12%, 70%);
+  --border-color: rgba(255,255,255,0.06);
+  --border-focus: rgba(10,68,142,0.16);
+  --ursb-blue-trans: rgba(10, 68, 142, 0.06);
+  --shadow-sm: 0 2px 10px rgba(0,0,0,0.45);
+  --shadow-md: 0 8px 28px rgba(0,0,0,0.5);
+  --shadow-lg: 0 16px 48px rgba(0,0,0,0.6);
+}
+
 /* ================= BASIC STYLES & RESET ================= */
 
 * {
@@ -1416,6 +1430,39 @@ tr:hover td {
   gap: 0.75rem;
   /* Ensure footer is always visible and never hidden by overflow */
   flex-shrink: 0;
+}
+
+/* Logout confirmation modal styling */
+.modal-logout {
+  border-top-color: var(--color-disposed);
+}
+.modal-logout .modal-header h3 {
+  color: var(--color-disposed);
+}
+.modal-logout .modal-body p {
+  font-size: 1rem;
+  color: var(--text-secondary);
+}
+.modal-logout .modal-footer .btn-danger {
+  min-width: 110px;
+}
+
+/* Theme toggle icon styling */
+.theme-icon {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.theme-label {
+  vertical-align: middle;
+}
+.btn[title="Toggle theme"], #theme-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 /* Forms inside modals must participate in flex layout so modal-body
