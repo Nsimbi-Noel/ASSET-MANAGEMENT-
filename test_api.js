@@ -19,9 +19,15 @@ async function runTests() {
     console.log(`${green}✓ Authentication login successful${reset}`);
     
     // Setup Mock Requesting User Context
+    // Look users up by their stable natural key (username) rather than hardcoding
+    // primary keys, so the suite doesn't break if seed ordering ever changes.
     const managerUser = authResult.user;
-    const employeeUser = { id: 4, username: 'employee', role: 'Employee', department: 'Registries' };
-    const adminUser = { id: 1, username: 'admin', role: 'Admin', department: 'Information Technology' };
+
+    const employeeRow = db.prepare("SELECT * FROM users WHERE username = 'employee'").get();
+    const employeeUser = { id: employeeRow.id, username: employeeRow.username, role: employeeRow.role, department: employeeRow.department };
+
+    const adminRow = db.prepare("SELECT * FROM users WHERE username = 'admin'").get();
+    const adminUser = { id: adminRow.id, username: adminRow.username, role: adminRow.role, department: adminRow.department };
 
     // 2. Test Asset Registration
     console.log('\nTesting Asset Registration...');
@@ -45,10 +51,10 @@ async function runTests() {
     // 3. Test Asset Assignment & Rule Enforcement
     console.log('\nTesting Asset Assignment & Rule Validation...');
     
-    // Assign the new asset to an assignee (id 3)
+    // Assign the new asset to an assignee (the seeded employee)
     const assignResult = controller.assignAsset(managerUser, {
       assetId: newAsset.id,
-      assignedTo: 3,
+      assignedTo: employeeUser.id,
       assignmentDate: '2026-06-18',
       purpose: 'Field outreach registrations',
       notes: 'Please return in original box'
@@ -64,7 +70,7 @@ async function runTests() {
     try {
       controller.assignAsset(managerUser, {
         assetId: newAsset.id,
-        assignedTo: 4,
+        assignedTo: adminUser.id,
         assignmentDate: '2026-06-18'
       });
       assert.fail('Should prevent assigning an already assigned asset');
@@ -114,7 +120,7 @@ async function runTests() {
     try {
       controller.assignAsset(managerUser, {
         assetId: maintAsset.id,
-        assignedTo: 3,
+        assignedTo: employeeUser.id,
         assignmentDate: '2026-06-18'
       });
       assert.fail('Should prevent assignment of asset under maintenance');
@@ -169,7 +175,7 @@ async function runTests() {
     try {
       controller.assignAsset(managerUser, {
         assetId: disposalAsset.id,
-        assignedTo: 3,
+        assignedTo: employeeUser.id,
         assignmentDate: '2026-06-18'
       });
       assert.fail('Should prevent assignment of disposed asset');
