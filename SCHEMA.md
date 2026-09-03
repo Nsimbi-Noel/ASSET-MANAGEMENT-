@@ -21,8 +21,9 @@ Stores system user accounts and authentication data.
 | `username` | TEXT | UNIQUE, NOT NULL | Login credential |
 | `password` | TEXT | NOT NULL | Hashed password string |
 | `name` | TEXT | NOT NULL | Full name of the user |
-| `role` | TEXT | NOT NULL | Admin, AssetManager, AssetCustodian, Employee |
-| `department` | TEXT | NOT NULL | Institutional department name |
+| `role` | TEXT | NOT NULL, CHECK | Admin, AssetManager, Employee |
+| `department` | TEXT | NULLABLE | Institutional department name |
+| `status` | TEXT | DEFAULT 'Active', CHECK | Active, Inactive |
 | `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP | Record creation timestamp |
 
 ### 2.2 Assets (`assets`)
@@ -34,13 +35,13 @@ The primary inventory for all institutional assets.
 | `name` | TEXT | NOT NULL | Asset name/description |
 | `type` | TEXT | NOT NULL | Asset type (e.g., Laptop, Router) |
 | `category` | TEXT | NOT NULL | Category (e.g., IT Equipment, Furniture) |
-| `serial_number` | TEXT | UNIQUE | Manufacturer serial number |
-| `condition` | TEXT | NOT NULL | New, Good, Refurbished, Damaged |
+| `serial_number` | TEXT | NOT NULL, UNIQUE | Manufacturer serial number |
+| `condition` | TEXT | NOT NULL, CHECK | New, Good, Refurbished, Damaged |
 | `acquisition_date`| DATE | NOT NULL | Date of purchase/acquisition |
-| `cost` | REAL | NOT NULL, >= 0 | Purchase price in UGX |
+| `cost` | REAL | NOT NULL, CHECK (>= 0) | Purchase price in UGX |
 | `supplier` | TEXT | NOT NULL | Vendor or source organization |
-| `source` | TEXT | NOT NULL | Procurement, Donation, etc. |
-| `status` | TEXT | NOT NULL | Active, In Storage, Under Maintenance, Disposed |
+| `source` | TEXT | NOT NULL, CHECK | Procurement, Donation, Lease, Other |
+| `status` | TEXT | NOT NULL, CHECK | Active, In Storage, Under Maintenance, Disposed |
 | `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP | Record creation timestamp |
 
 ### 2.3 Assignments (`assignments`)
@@ -53,11 +54,13 @@ Tracks the custody of assets assigned to specific users.
 | `assigned_to` | INTEGER | FOREIGN KEY (users.id) | Custodian receiving the asset |
 | `assigned_by` | INTEGER | FOREIGN KEY (users.id) | Manager authorizing the assignment |
 | `assignment_date` | DATE | NOT NULL | Date of handover |
-| `return_date` | DATE | NULLABLE | Date when asset was returned |
-| `purpose` | TEXT | NOT NULL | Reason for assignment |
+| `contract_end_date` | DATE | NULLABLE | End of the custody contract |
+| `returned_date` | DATE | NULLABLE | Date when asset was returned |
+| `purpose` | TEXT | NULLABLE | Reason for assignment |
 | `notes` | TEXT | NULLABLE | Additional handover details |
-| `confirmed_receipt`| BOOLEAN | DEFAULT 0 | Whether custodian confirmed receipt |
-| `status` | TEXT | DEFAULT 'Active' | Active, Returned |
+| `confirmed_receipt`| INTEGER | DEFAULT 0, CHECK (0/1) | Whether custodian confirmed receipt |
+| `status` | TEXT | DEFAULT 'Active', CHECK | Active, Returned |
+| `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP | Record creation timestamp |
 
 ### 2.4 Transfers (`transfers`)
 Records the movement of assets between different custodians.
@@ -81,10 +84,12 @@ Logs the service, repair, and maintenance history of assets.
 | `asset_id` | TEXT | FOREIGN KEY (assets.id) | Linked asset |
 | `service_provider`| TEXT | NOT NULL | Vendor performing the service |
 | `description` | TEXT | NOT NULL | Details of work performed |
-| `cost` | REAL | NOT NULL, >= 0 | Service cost |
+| `cost` | REAL | NOT NULL, CHECK (>= 0) | Service cost |
 | `service_date` | DATE | NOT NULL | Date of service |
 | `next_service_date`| DATE | NULLABLE | Recommended next service date |
-| `completed` | BOOLEAN | DEFAULT 0 | Service completion status |
+| `estimated_duration_days` | INTEGER | NULLABLE | Expected number of days for servicing |
+| `expected_completion_date` | DATE | NULLABLE | Derived as service_date + estimated_duration_days, used to flag readiness |
+| `completed` | INTEGER | DEFAULT 0, CHECK (0/1) | Service completion status |
 | `completion_date` | DATE | NULLABLE | Actual completion date |
 
 ### 2.6 Disposals (`disposals`)
@@ -109,7 +114,9 @@ Workflow for internal asset procurement or assignment requests.
 | `asset_name` | TEXT | NOT NULL | Name of requested item |
 | `asset_type` | TEXT | NOT NULL | Type of requested item |
 | `purpose` | TEXT | NOT NULL | Business justification |
-| `status` | TEXT | DEFAULT 'Pending' | Pending, Approved, Rejected |
+| `status` | TEXT | DEFAULT 'Pending', CHECK | Pending, Approved, Rejected, Revoked |
+| `requester_feedback` | TEXT | NULLABLE | Feedback from the requester (follow-up) |
+| `received_status` | TEXT | DEFAULT 'Pending' | Pending, Received, Not Received |
 | `manager_notes` | TEXT | NULLABLE | Feedback from management |
 | `actioned_by` | INTEGER | FOREIGN KEY (users.id) | Manager who reviewed request |
 | `actioned_date` | DATE | NULLABLE | Date of review |
@@ -120,9 +127,9 @@ Immutable record of all state-changing operations in the system.
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
 | `id` | INTEGER | PRIMARY KEY, AUTOINCREMENT | Log ID |
-| `user_id` | INTEGER | NOT NULL | ID of user performing action |
+| `user_id` | INTEGER | NULLABLE | ID of user performing action |
 | `username` | TEXT | NOT NULL | Name of user performing action |
-| `action` | TEXT | NOT NULL | CREATE, UPDATE, DELETE, LOGIN |
+| `action_type` | TEXT | NOT NULL | CREATE, UPDATE, DELETE, LOGIN |
 | `table_name` | TEXT | NOT NULL | Target table affected |
 | `record_id` | TEXT | NOT NULL | ID of the record affected |
 | `details` | TEXT | NOT NULL | Descriptive log message |
@@ -141,5 +148,5 @@ Immutable record of all state-changing operations in the system.
 
 ## 4. Performance Optimization
 
-- **Indexing**: Primary keys are automatically indexed. Additional indices are recommended for `assets.status` and `assignments.asset_id` for faster reporting.
+- **Indexing**: Primary keys are automatically indexed. Additional indices are created at startup on `assets.status`, `assignments.asset_id`, `assignments.status`, `assignments.assigned_to`, `maintenance.asset_id`, `maintenance.completed`, `requests.requested_by`, and `audit_log.timestamp` for faster reporting.
 - **SQLite Optimization**: The database uses Write-Ahead Logging (WAL) mode for better concurrency during high-frequency audit logging.
