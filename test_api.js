@@ -1,6 +1,24 @@
 const assert = require('assert');
+const path = require('path');
+const fs = require('fs');
+
+// Use an isolated, throwaway database for tests so they never write to the
+// production/dev database. The env var must be set BEFORE controller/db are
+// required, because those modules read DB_PATH at load time.
+if (!process.env.DB_PATH) {
+  const testDbDir = path.join(__dirname, 'data');
+  fs.mkdirSync(testDbDir, { recursive: true });
+  process.env.DB_PATH = path.join(testDbDir, 'test-api.db');
+}
+
+// Start from a clean slate so repeated runs (or a leftover DB from a previous
+// run) never collide on UNIQUE keys like serial numbers.
+['', '-wal', '-shm'].forEach(suffix => {
+  try { fs.unlinkSync(process.env.DB_PATH + suffix); } catch (_) { /* ignore */ }
+});
+
 const controller = require('./controller');
-const { db } = require('./db');
+const { db, dbReady } = require('./db');
 
 // Color codes for output styling
 const green = '\x1b[32m';
@@ -11,9 +29,13 @@ async function runTests() {
   console.log('Starting automated integration test suite for URSB AMS...\n');
   
   try {
+    // Wait for the default accounts (admin/manager/employee) to finish seeding
+    // before logging in — their password hashing happens asynchronously.
+    await dbReady;
+
     // 1. Test Auth & Login
     console.log('Testing Authentication...');
-    const authResult = controller.login('manager', 'manager123');
+    const authResult = await controller.login('manager', 'manager123');
     assert.ok(authResult.sessionId, 'Session token should be generated');
     assert.strictEqual(authResult.user.role, 'AssetManager', 'User role should match database seed');
     console.log(`${green}✓ Authentication login successful${reset}`);

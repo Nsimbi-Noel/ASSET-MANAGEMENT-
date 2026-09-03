@@ -2,6 +2,10 @@ const { db } = require('./db');
 const { hashPassword } = require('./crypto_utils');
 
 function seedData() {
+  return seedDataAsync();
+}
+
+async function seedDataAsync() {
   console.log('Seeding sample data...');
 
   const departments = ['Information Technology', 'Administration', 'Finance', 'Registries', 'Legal', 'Human Resources', 'Public Relations'];
@@ -57,7 +61,7 @@ function seedData() {
       const role = roleBuckets[i] || 'Employee';
       const dept = departments[i % departments.length];
       try {
-        insertUser.run(username, hashPassword('password123'), name, role, dept);
+        insertUser.run(username, await hashPassword('password123'), name, role, dept);
       } catch (e) {
         // Skip if username exists
       }
@@ -268,4 +272,9 @@ function seedData() {
   console.log('Seeding complete.');
 }
 
-seedData();
+seedData().then(() => {
+  console.log('Done.');
+}).catch((err) => {
+  console.error('Seeding failed:', err);
+  process.exit(1);
+});

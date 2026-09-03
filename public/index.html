@@ -18,13 +18,14 @@
 
   <!-- ================= AUTH CONTAINER ================= -->
   <div id="auth-container" class="auth-wrapper">
-    <!-- Background image slideshow -->
+    <!-- Background image slideshow (self-contained CSS gradients so the login
+         page works offline/on-intranet without fetching third-party images) -->
     <div class="login-slideshow" id="login-slideshow">
-      <div class="slide active" style="background-image: url('https://images.unsplash.com/photo-1518770660439-4636190af475?w=1600&q=80')"></div>
-      <div class="slide" style="background-image: url('https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=1600&q=80')"></div>
-      <div class="slide" style="background-image: url('https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=1600&q=80')"></div>
-      <div class="slide" style="background-image: url('https://images.unsplash.com/photo-1597733336794-12d05021d510?w=1600&q=80')"></div>
-      <div class="slide" style="background-image: url('https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=1600&q=80')"></div>
+      <div class="slide active" style="background-image: linear-gradient(135deg, #0b2b4f 0%, #1b5fa8 100%);"></div>
+      <div class="slide" style="background-image: linear-gradient(135deg, #103a30 0%, #2f8f70 100%);"></div>
+      <div class="slide" style="background-image: linear-gradient(135deg, #3a1f5f 0%, #7a4bc0 100%);"></div>
+      <div class="slide" style="background-image: linear-gradient(135deg, #5f2a10 0%, #c07a2f 100%);"></div>
+      <div class="slide" style="background-image: linear-gradient(135deg, #123f52 0%, #2f9dd1 100%);"></div>
     </div>
     <div class="auth-overlay"></div>
     <div class="auth-card">
@@ -49,7 +50,7 @@
 
         <div class="form-error-msg" id="login-error"></div>
 
-        <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+        <button type="submit" id="login-submit" class="btn btn-primary btn-block">Sign In</button>
       </form>
       
       <div class="auth-footer">

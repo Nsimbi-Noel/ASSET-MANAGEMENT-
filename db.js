@@ -11,10 +11,25 @@ if (!fs.existsSync(dbDir)) {
 }
 const db = new DatabaseSync(dbPath);
 
+// Enforce referential integrity (SQLite disables this by default per connection).
+// Documented in SCHEMA.md but was never actually applied.
+db.exec('PRAGMA foreign_keys = ON');
+
+// Use Write-Ahead Logging for better concurrency during high-frequency audit
+// writes (documented in SCHEMA.md but was never actually applied).
+try {
+  db.exec('PRAGMA journal_mode = WAL');
+} catch (e) {
+  // WAL may be unavailable on some filesystems (e.g. network mounts); fall back silently.
+}
+
 /**
  * Initialize database tables and seed initial data.
  */
 function initDb() {
+  // Enforce FK pragma again here in case initDb is ever called on a fresh connection.
+  db.exec('PRAGMA foreign_keys = ON');
+
   // 1. Users Table
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -22,9 +37,9 @@ function initDb() {
       username TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
       name TEXT NOT NULL,
-      role TEXT NOT NULL, -- Admin, AssetManager, Employee
+      role TEXT NOT NULL CHECK (role IN ('Admin', 'AssetManager', 'Employee')),
       department TEXT,
-      status TEXT DEFAULT 'Active', -- Active, Inactive
+      status TEXT DEFAULT 'Active' CHECK (status IN ('Active', 'Inactive')),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
@@ -36,13 +51,13 @@ function initDb() {
       name TEXT NOT NULL,
       type TEXT NOT NULL,
       category TEXT NOT NULL,
-      serial_number TEXT NOT NULL,
-      condition TEXT NOT NULL, -- New, Good, Refurbished, Damaged
+      serial_number TEXT NOT NULL UNIQUE,
+      condition TEXT NOT NULL CHECK (condition IN ('New', 'Good', 'Refurbished', 'Damaged')),
       acquisition_date TEXT NOT NULL,
-      cost REAL NOT NULL,
+      cost REAL NOT NULL CHECK (cost >= 0),
       supplier TEXT NOT NULL,
-      source TEXT NOT NULL, -- Procurement, Donation, Other
-      status TEXT NOT NULL, -- Active, In Storage, Under Maintenance, Disposed
+      source TEXT NOT NULL CHECK (source IN ('Procurement', 'Donation', 'Lease', 'Other')),
+      status TEXT NOT NULL CHECK (status IN ('Active', 'In Storage', 'Under Maintenance', 'Disposed')),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
@@ -58,8 +73,8 @@ function initDb() {
       contract_end_date TEXT,
       purpose TEXT,
       notes TEXT,
-      confirmed_receipt INTEGER DEFAULT 0, -- 0 = No, 1 = Yes
-      status TEXT DEFAULT 'Active', -- Active, Returned
+      confirmed_receipt INTEGER DEFAULT 0 CHECK (confirmed_receipt IN (0, 1)), -- 0 = No, 1 = Yes
+      status TEXT DEFAULT 'Active' CHECK (status IN ('Active', 'Returned')),
       returned_date TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -86,12 +101,12 @@ function initDb() {
       asset_id TEXT REFERENCES assets(id),
       service_provider TEXT NOT NULL,
       description TEXT NOT NULL,
-      cost REAL NOT NULL,
+      cost REAL NOT NULL CHECK (cost >= 0),
       service_date TEXT NOT NULL,
       next_service_date TEXT,
       estimated_duration_days INTEGER, -- How many days the manager expects servicing to take
       expected_completion_date TEXT, -- service_date + estimated_duration_days, used to flag readiness
-      completed INTEGER DEFAULT 0, -- 0 = No, 1 = Yes
+      completed INTEGER DEFAULT 0 CHECK (completed IN (0, 1)), -- 0 = No, 1 = Yes
       completion_date TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -118,7 +133,7 @@ function initDb() {
       asset_name TEXT NOT NULL,
       asset_type TEXT NOT NULL,
       purpose TEXT NOT NULL,
-      status TEXT DEFAULT 'Pending', -- Pending, Approved, Rejected
+      status TEXT DEFAULT 'Pending' CHECK (status IN ('Pending', 'Approved', 'Rejected', 'Revoked')),
       manager_notes TEXT,
       actioned_by INTEGER REFERENCES users(id),
       actioned_date TEXT,
@@ -126,7 +141,7 @@ function initDb() {
     );
   `);
 
-  // Migration for Requests Table
+  // Migration for Requests Table (requester_feedback / received_status added later)
   try {
     db.exec("ALTER TABLE requests ADD COLUMN requester_feedback TEXT;");
   } catch (e) { /* ignore if column exists */ }
@@ -158,44 +173,61 @@ function initDb() {
     );
   `);
 
-  // Seed default users only (no demo data)
+  // --- Performance indices (recommended by SCHEMA.md §4 but never created) ---
+  try {
+    db.exec('CREATE INDEX IF NOT EXISTS idx_assets_status ON assets(status)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_assignments_asset_id ON assignments(asset_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_assignments_status ON assignments(status)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_assignments_assigned_to ON assignments(assigned_to)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_maintenance_asset_id ON maintenance(asset_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_maintenance_completed ON maintenance(completed)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_requests_requested_by ON requests(requested_by)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)');
+  } catch (e) {
+    /* indices are best-effort; ignore on unusual storage setups */
+  }
+
+  // Remove expired sessions opportunistically at startup so the sessions
+  // table does not grow unboundedly over time.
+  try {
+    db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(new Date().toISOString());
+  } catch (e) {
+    /* best-effort cleanup */
+  }
+
+  // Seed the default accounts asynchronously so the event loop is not blocked
+  // by password hashing during startup.
+  return seedDefaultUsers();
+}
+
+// Asynchronously seed the default accounts (admin/manager/employee) once.
+async function seedDefaultUsers() {
   const userCheck = db.prepare('SELECT COUNT(*) as count FROM users');
   const userCount = userCheck.get();
-  
+
   if (userCount.count === 0) {
     const insertUser = db.prepare(`
       INSERT INTO users (username, password, name, role, department)
       VALUES (?, ?, ?, ?, ?)
     `);
 
-    insertUser.run('admin', hashPassword('admin123'), 'System Administrator', 'Admin', 'Information Technology');
-    insertUser.run('manager', hashPassword('manager123'), 'Asset Manager', 'AssetManager', 'Administration');
-    insertUser.run('employee', hashPassword('employee123'), 'Brenda Nansubuga', 'Employee', 'Registries');
-    
+    insertUser.run('admin', await hashPassword('admin123'), 'System Administrator', 'Admin', 'Information Technology');
+    insertUser.run('manager', await hashPassword('manager123'), 'Asset Manager', 'AssetManager', 'Administration');
+    insertUser.run('employee', await hashPassword('employee123'), 'Brenda Nansubuga', 'Employee', 'Registries');
+
     console.log('Default accounts created: admin, manager, employee');
   }
 }
 
-// Initialize database
-initDb();
+// Initialize database (table creation happens synchronously so the schema is
+// guaranteed to exist before seedDefaultUsers runs).
+const dbReady = initDb();
 
 // Migration: Convert legacy custodian roles to Employee so old accounts stop using removed role names
 try {
   db.exec("UPDATE users SET role = 'Employee' WHERE role IN ('Custodian', 'AssetCustodian')");
 } catch (e) {
   // Ignore if the update fails for some reason
-}
-
-// Migration: Ensure requester_feedback and received_status exist in requests table for existing databases
-try {
-  db.exec("ALTER TABLE requests ADD COLUMN requester_feedback TEXT");
-} catch (e) {
-  // Column might already exist
-}
-try {
-  db.exec("ALTER TABLE requests ADD COLUMN received_status TEXT DEFAULT 'Pending'");
-} catch (e) {
-  // Column might already exist
 }
 
 // Migration: Ensure estimated_duration_days and expected_completion_date exist in maintenance table
@@ -221,5 +253,6 @@ try {
 
 module.exports = {
   db,
-  dbPath
+  dbPath,
+  dbReady
 };

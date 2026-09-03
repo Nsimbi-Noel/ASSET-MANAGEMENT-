@@ -129,6 +129,19 @@ document.addEventListener('DOMContentLoaded', () => {
 // showApp() was called before the browser had fully processed the session cookie.
 let loginInProgress = false;
 
+// Simple double-submit protection: keyed by form id, prevents a user from
+// submitting the same form twice while a request is in flight (which could
+// otherwise create duplicate assets/users/requests).
+const inflightSubmits = new Set();
+function acquireFormLock(formId) {
+  if (inflightSubmits.has(formId)) return false;
+  inflightSubmits.add(formId);
+  return true;
+}
+function releaseFormLock(formId) {
+  inflightSubmits.delete(formId);
+}
+
 async function initApp() {
   setupEventListeners();
   // Apply previously selected theme (or system preference) as early as possible
@@ -337,14 +350,21 @@ function initMaintenanceActionListeners() {
 // Handle Login
 async function handleLogin(e) {
   e.preventDefault();
+  if (loginInProgress) return; // keep the guard tight so double-clicks cannot fire twice
   loginInProgress = true;
-  
+
   const usernameInput = document.getElementById('login-username').value;
   const passwordInput = document.getElementById('login-password').value;
   const errorDiv = document.getElementById('login-error');
-  
+  const submitBtn = document.getElementById('login-submit');
+
+  // Clear any previous error and give immediate feedback that the request is running.
   errorDiv.textContent = '';
-  
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Signing in...';
+  }
+
   try {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
@@ -361,16 +381,19 @@ async function handleLogin(e) {
       document.getElementById('login-form').reset();
       errorDiv.textContent = '';
       showApp();
-      // Release the lock after a short delay so any subsequent session checks
-      // (e.g. after a page refresh) can proceed normally.
-      setTimeout(() => { loginInProgress = false; }, 2000);
     } else {
       errorDiv.textContent = data.error || 'Authentication failed.';
-      loginInProgress = false;
     }
   } catch (err) {
     errorDiv.textContent = 'Server unreachable. Check connections.';
-    loginInProgress = false;
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Sign In';
+    }
+    // Release the lock after a short delay so any subsequent session checks
+    // (e.g. after a page refresh) can proceed normally.
+    setTimeout(() => { loginInProgress = false; }, 2000);
   }
 }
 
@@ -431,6 +454,19 @@ function navigateTo(view, filter = null) {
 
   // After render, label table cells for mobile card-stack layout
   requestAnimationFrame(labelTableCells);
+}
+
+// Escape user-controlled values before interpolation into innerHTML templates.
+// Prevents stored/reflected XSS whenever data coming from the database (asset
+// names, notes, usernames, request purposes, etc.) is rendered as markup.
+function escapeHtml(value) {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // Render Specific Views
@@ -565,10 +601,10 @@ async function renderDashboardView(container) {
                   <tr><td colspan="4" class="text-center text-secondary">No assets to display.</td></tr>
                 ` : data.assetAvailability.map(a => `
                   <tr>
-                    <td><a href="#" class="text-link" onclick="viewAssetDetails('${a.id}')">${a.id}</a></td>
-                    <td><strong>${a.name}</strong></td>
-                    <td>${a.category}</td>
-                    <td><span class="status-badge ${a.availability === 'Available' ? 'active' : 'under-maintenance'}">${a.availability}</span></td>
+                    <td><a href="#" class="text-link" onclick="viewAssetDetails('${escapeHtml(a.id)}')">${escapeHtml(a.id)}</a></td>
+                    <td><strong>${escapeHtml(a.name)}</strong></td>
+                    <td>${escapeHtml(a.category)}</td>
+                    <td><span class="status-badge ${a.availability === 'Available' ? 'active' : 'under-maintenance'}">${escapeHtml(a.availability)}</span></td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -604,12 +640,12 @@ async function renderDashboardView(container) {
                 <tr><td colspan="6" class="text-center text-secondary">No maintenance jobs are due for review right now.</td></tr>
               ` : data.maintenanceReadyForReview.map(m => `
                 <tr>
-                  <td><a href="#" class="text-link" onclick="viewAssetDetails('${m.asset_id}')">${m.asset_id}</a></td>
-                  <td><strong>${m.asset_name}</strong></td>
-                  <td>${m.service_provider}</td>
-                  <td><span class="text-danger" style="font-weight:600;">${m.expected_completion_date}</span></td>
-                  <td>${m.days_overdue > 0 ? `${m.days_overdue} day(s)` : 'Due today'}</td>
-                  <td>${currentUser.role === 'AssetManager' ? `<button class="btn btn-primary btn-sm" onclick="completeMaintenancePrompt('${m.id}', '${m.asset_id}')">Review &amp; Decide</button>` : '<span class="text-secondary">-</span>'}</td>
+                  <td><a href="#" class="text-link" onclick="viewAssetDetails('${escapeHtml(m.asset_id)}')">${escapeHtml(m.asset_id)}</a></td>
+                  <td><strong>${escapeHtml(m.asset_name)}</strong></td>
+                  <td>${escapeHtml(m.service_provider)}</td>
+                  <td><span class="text-danger" style="font-weight:600;">${escapeHtml(m.expected_completion_date)}</span></td>
+                  <td>${m.days_overdue > 0 ? `${escapeHtml(m.days_overdue)} day(s)` : 'Due today'}</td>
+                  <td>${currentUser.role === 'AssetManager' ? `<button class="btn btn-primary btn-sm" onclick="completeMaintenancePrompt('${escapeHtml(m.id)}', '${escapeHtml(m.asset_id)}')">Review &amp; Decide</button>` : '<span class="text-secondary">-</span>'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -638,11 +674,11 @@ async function renderDashboardView(container) {
                 <tr><td colspan="6" class="text-center text-secondary">No assets have maintenance due within 30 days.</td></tr>
               ` : data.upcomingMaintenance.map(m => `
                 <tr>
-                  <td><a href="#" class="text-link" onclick="viewAssetDetails('${m.asset_id}')">${m.asset_id}</a></td>
-                  <td><strong>${m.asset_name}</strong></td>
-                  <td>${m.service_provider}</td>
-                  <td>${m.service_date}</td>
-                  <td><span class="text-danger" style="font-weight:600;">${m.next_service_date || 'N/A'}</span></td>
+                  <td><a href="#" class="text-link" onclick="viewAssetDetails('${escapeHtml(m.asset_id)}')">${escapeHtml(m.asset_id)}</a></td>
+                  <td><strong>${escapeHtml(m.asset_name)}</strong></td>
+                  <td>${escapeHtml(m.service_provider)}</td>
+                  <td>${escapeHtml(m.service_date)}</td>
+                  <td><span class="text-danger" style="font-weight:600;">${escapeHtml(m.next_service_date || 'N/A')}</span></td>
                   <td><span class="status-badge under-maintenance">Due</span></td>
                 </tr>
               `).join('')}
@@ -1049,7 +1085,7 @@ async function renderRegisterView(container) {
           <input type="text" id="asset-search" placeholder="Search by name, serial..." class="filter-input" oninput="filterAssetTable()">
           <select id="asset-filter-type" class="filter-select" onchange="filterAssetTable()">
             <option value="">All Types</option>
-            ${Array.from(new Set(data.map(a => a.type))).map(type => `<option value="${type}">${type}</option>`).join('')}
+            ${Array.from(new Set(data.map(a => a.type))).map(type => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`).join('')}
           </select>
           <select id="asset-filter-status" class="filter-select" onchange="filterAssetTable()">
             <option value="">All Statuses</option>
@@ -1117,17 +1153,17 @@ function renderAssetTableRows(assets) {
   
   tbody.innerHTML = assets.map(a => `
     <tr style="cursor: pointer;">
-      <td onclick="viewAssetDetails('${a.id}')"><strong>${a.id}</strong></td>
-      <td onclick="viewAssetDetails('${a.id}')">${a.name}</td>
-      <td onclick="viewAssetDetails('${a.id}')">${a.type}</td>
-      <td onclick="viewAssetDetails('${a.id}')">${a.serial_number}</td>
-      <td onclick="viewAssetDetails('${a.id}')"><span class="status-badge active">${a.condition}</span></td>
-      <td onclick="viewAssetDetails('${a.id}')">${a.assigned_to_name ? `${a.assigned_to_name} (${a.assigned_to_department})` : '<span class="text-secondary">-</span>'}</td>
-      <td onclick="viewAssetDetails('${a.id}')"><span class="status-badge ${a.status.toLowerCase().replace(' ', '-')}">${a.status}</span></td>
+      <td onclick="viewAssetDetails('${escapeHtml(a.id)}')"><strong>${escapeHtml(a.id)}</strong></td>
+      <td onclick="viewAssetDetails('${escapeHtml(a.id)}')">${escapeHtml(a.name)}</td>
+      <td onclick="viewAssetDetails('${escapeHtml(a.id)}')">${escapeHtml(a.type)}</td>
+      <td onclick="viewAssetDetails('${escapeHtml(a.id)}')">${escapeHtml(a.serial_number)}</td>
+      <td onclick="viewAssetDetails('${escapeHtml(a.id)}')"><span class="status-badge active">${escapeHtml(a.condition)}</span></td>
+      <td onclick="viewAssetDetails('${escapeHtml(a.id)}')">${a.assigned_to_name ? `${escapeHtml(a.assigned_to_name)} (${escapeHtml(a.assigned_to_department)})` : '<span class="text-secondary">-</span>'}</td>
+      <td onclick="viewAssetDetails('${escapeHtml(a.id)}')"><span class="status-badge ${escapeHtml(a.status.toLowerCase().replace(' ', '-'))}">${escapeHtml(a.status)}</span></td>
       <td>
         <div style="display:flex; gap:0.25rem;">
-          <button class="btn btn-outline btn-sm" onclick="viewAssetDetails('${a.id}')">History</button>
-          ${currentUser.role === 'AssetManager' ? `<button class="btn btn-outline btn-sm" onclick="openEditAssetModal('${a.id}')">Edit</button>` : ''}
+          <button class="btn btn-outline btn-sm" onclick="viewAssetDetails('${escapeHtml(a.id)}')">History</button>
+          ${currentUser.role === 'AssetManager' ? `<button class="btn btn-outline btn-sm" onclick="openEditAssetModal('${escapeHtml(a.id)}')">Edit</button>` : ''}
         </div>
       </td>
     </tr>
@@ -1375,10 +1411,10 @@ function renderMyAssetsTableRows(assignments, requests, isFiltered = false) {
     
     html += `
       <tr class="assignment-row">
-        <td><strong>${a.asset_id}</strong></td>
-        <td>${a.asset_name}</td>
-        <td>${a.asset_type || '-'}</td>
-        <td>${a.assignment_date}</td>
+        <td><strong>${escapeHtml(a.asset_id)}</strong></td>
+        <td>${escapeHtml(a.asset_name)}</td>
+        <td>${escapeHtml(a.asset_type || '-')}</td>
+        <td>${escapeHtml(a.assignment_date)}</td>
         <td><span class="status-badge active">Assigned</span></td>
         <td><span class="text-secondary">N/A</span></td>
         <td>${receiptLabel}</td>
@@ -1401,13 +1437,13 @@ function renderMyAssetsTableRows(assignments, requests, isFiltered = false) {
     
     html += `
       <tr class="request-row" style="background-color: rgba(10, 68, 142, 0.02);">
-        <td>#REQ-${r.id}</td>
-        <td>${r.asset_name}</td>
-        <td>${r.asset_type || '-'}</td>
-        <td>${new Date(r.created_at).toLocaleDateString()}</td>
-        <td><span class="status-badge ${statusClass}">${r.status}</span></td>
-        <td>${r.manager_notes || '<span class="text-secondary">-</span>'}</td>
-        <td><span class="status-badge ${receiptStatusClass}">${r.received_status || 'Pending'}</span></td>
+        <td>#REQ-${escapeHtml(r.id)}</td>
+        <td>${escapeHtml(r.asset_name)}</td>
+        <td>${escapeHtml(r.asset_type || '-')}</td>
+        <td>${escapeHtml(new Date(r.created_at).toLocaleDateString())}</td>
+        <td><span class="status-badge ${escapeHtml(statusClass)}">${escapeHtml(r.status)}</span></td>
+        <td>${r.manager_notes ? escapeHtml(r.manager_notes) : '<span class="text-secondary">-</span>'}</td>
+        <td><span class="status-badge ${escapeHtml(receiptStatusClass)}">${escapeHtml(r.received_status || 'Pending')}</span></td>
         <td>${actionBtn}</td>
       </tr>
     `;
@@ -1509,14 +1545,14 @@ function renderAssignmentTableRows(assignments) {
       
     return `
       <tr>
-        <td><strong>${a.asset_id}</strong></td>
-        <td>${a.asset_name}</td>
-        <td>${a.assigned_to_name}</td>
-        <td>${a.assigned_to_department}</td>
-        <td>${a.assigned_by_name}</td>
-        <td>${a.assignment_date}</td>
+        <td><strong>${escapeHtml(a.asset_id)}</strong></td>
+        <td>${escapeHtml(a.asset_name)}</td>
+        <td>${escapeHtml(a.assigned_to_name)}</td>
+        <td>${escapeHtml(a.assigned_to_department)}</td>
+        <td>${escapeHtml(a.assigned_by_name)}</td>
+        <td>${escapeHtml(a.assignment_date)}</td>
         <td>${receiptLabel}</td>
-        <td><span class="status-badge ${a.status === 'Active' ? 'active' : 'disposed'}">${a.status}</span></td>
+        <td><span class="status-badge ${a.status === 'Active' ? 'active' : 'disposed'}">${escapeHtml(a.status)}</span></td>
         <td>${actionBtn}</td>
       </tr>
     `;
@@ -1673,12 +1709,12 @@ async function loadTransfersTable() {
     tbody.innerHTML = transfers.map(t => {
       return `
         <tr>
-          <td><strong>${t.asset_id}</strong></td>
-          <td>${t.from_name} (${t.from_department || '-'})</td>
-          <td>${t.to_name} (${t.to_department || '-'})</td>
-          <td>${t.transfer_date}</td>
-          <td>${t.reason}</td>
-          <td>${t.manager_name}</td>
+          <td><strong>${escapeHtml(t.asset_id)}</strong></td>
+          <td>${escapeHtml(t.from_name)} (${escapeHtml(t.from_department || '-')})</td>
+          <td>${escapeHtml(t.to_name)} (${escapeHtml(t.to_department || '-')})</td>
+          <td>${escapeHtml(t.transfer_date)}</td>
+          <td>${escapeHtml(t.reason)}</td>
+          <td>${escapeHtml(t.manager_name)}</td>
         </tr>
       `;
     }).join('');
@@ -1922,17 +1958,17 @@ function renderMaintenanceTableRows(records) {
     
     return `
       <tr>
-        <td><strong>${m.asset_id}</strong></td>
-        <td>${m.asset_name}</td>
-        <td>${m.service_provider}</td>
-        <td>UGX ${Number(m.cost).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-        <td>${m.service_date}</td>
-        <td>${m.expected_completion_date ? `<span style="${readyForReview ? 'color:#c53030;font-weight:600;' : ''}">${m.expected_completion_date}</span>` : 'N/A'}</td>
+        <td><strong>${escapeHtml(m.asset_id)}</strong></td>
+        <td>${escapeHtml(m.asset_name)}</td>
+        <td>${escapeHtml(m.service_provider)}</td>
+        <td>UGX ${escapeHtml(Number(m.cost).toLocaleString(undefined, { maximumFractionDigits: 0 }))}</td>
+        <td>${escapeHtml(m.service_date)}</td>
+        <td>${m.expected_completion_date ? `<span style="${readyForReview ? 'color:#c53030;font-weight:600;' : ''}">${escapeHtml(m.expected_completion_date)}</span>` : 'N/A'}</td>
         <td>
-          <div>${m.next_service_date || 'N/A'}</div>
+          <div>${escapeHtml(m.next_service_date || 'N/A')}</div>
           ${daysInfo}
         </td>
-        <td><span class="status-badge ${progressBadgeClass}">${m.progress_status}</span></td>
+        <td><span class="status-badge ${progressBadgeClass}">${escapeHtml(m.progress_status)}</span></td>
         <td>${nextAction}</td>
       </tr>
     `;
@@ -1993,8 +2029,8 @@ async function completeMaintenancePrompt(maintenanceId, assetId) {
       const today = new Date().toISOString().split('T')[0];
       const isOverdue = maintenance.expected_completion_date < today;
       timingNote.innerHTML = isOverdue
-        ? `<span style="color:#c53030;font-weight:600;">Estimated completion was ${maintenance.expected_completion_date} — this is now overdue against that estimate.</span>`
-        : `Estimated completion date: <strong>${maintenance.expected_completion_date}</strong>.`;
+        ? `<span style="color:#c53030;font-weight:600;">Estimated completion was ${escapeHtml(maintenance.expected_completion_date)} — this is now overdue against that estimate.</span>`
+        : `Estimated completion date: <strong>${escapeHtml(maintenance.expected_completion_date)}</strong>.`;
     } else {
       timingNote.textContent = '';
     }
@@ -2071,10 +2107,20 @@ async function submitCompleteMaintenance() {
   }
   
   try {
+    // The server now handles the dispose archive atomically inside
+    // completeMaintenance when nextStatus === 'Disposed', so there is no need
+    // for a separate /api/disposals call (which used to fail silently because
+    // the asset was already marked 'Disposed' by the time it ran).
     const res = await fetch(`/api/maintenance/${pendingMaintenanceCompletion}/complete`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ completionDate, nextStatus, assignToId })
+      body: JSON.stringify({
+        completionDate,
+        nextStatus,
+        assignToId,
+        disposalMethod: 'Scrapped',
+        disposalReason: 'Too foregone/damaged beyond repair after maintenance'
+      })
     });
     const data = await res.json();
     if (res.ok) {
@@ -2103,23 +2149,8 @@ async function submitCompleteMaintenance() {
         } catch (assignErr) {
           showToast('Maintenance completed but assignment failed: Network error', 'warning');
         }
-      } else if (action === 'dispose' && data.assetId) {
-        // If dispose action was selected, also record it in the disposals archive
-        try {
-          await fetch('/api/disposals', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              assetId: data.assetId,
-              disposalDate: completionDate,
-              method: 'Scrapped',
-              reason: 'Too foregone/damaged beyond repair after maintenance'
-            })
-          });
-          showToast('Asset marked as disposed in archive.', 'success');
-        } catch (err) {
-          console.error('Failed to record disposal archive:', err);
-        }
+      } else if (action === 'dispose' && data.disposed) {
+        showToast('Asset marked as disposed and archived.', 'success');
       }
       
       closeModal('modal-complete-maintenance');
@@ -2199,19 +2230,19 @@ async function loadDisposalsTableRows(disposedAssets) {
       
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td><strong>${asset.id}</strong></td>
-        <td>${asset.name}</td>
-        <td>${asset.type}</td>
-        <td>${asset.serial_number}</td>
-        <td>UGX ${Number(asset.cost).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+        <td><strong>${escapeHtml(asset.id)}</strong></td>
+        <td>${escapeHtml(asset.name)}</td>
+        <td>${escapeHtml(asset.type)}</td>
+        <td>${escapeHtml(asset.serial_number)}</td>
+        <td>UGX ${escapeHtml(Number(asset.cost).toLocaleString(undefined, { maximumFractionDigits: 0 }))}</td>
         <td>
           ${disp ? `
-            <strong>Method:</strong> ${disp.method}<br>
-            <strong>Date:</strong> ${disp.disposal_date}<br>
-            <strong>Reason:</strong> ${disp.reason}
+            <strong>Method:</strong> ${escapeHtml(disp.method)}<br>
+            <strong>Date:</strong> ${escapeHtml(disp.disposal_date)}<br>
+            <strong>Reason:</strong> ${escapeHtml(disp.reason)}
           ` : 'Disposal metadata missing'}
         </td>
-        <td>${disp ? disp.manager_name : '-'}</td>
+        <td>${disp ? escapeHtml(disp.manager_name) : '-'}</td>
       `;
       tbody.appendChild(tr);
     } catch (e) {}
@@ -2298,16 +2329,16 @@ function renderRequestTableRows(requests) {
     
     return `
       <tr>
-        <td>#REQ-${r.id}</td>
-        <td><strong>${r.requested_by_name}</strong></td>
-        <td>${r.asset_name}</td>
-        <td>${r.asset_type}</td>
-        <td>${r.purpose}</td>
-        <td>${new Date(r.created_at).toLocaleDateString()}</td>
-        <td><span class="status-badge ${r.status.toLowerCase()}">${r.status}</span></td>
-        <td>${r.manager_notes || '<span class="text-secondary">-</span>'}</td>
-        <td><span class="status-badge ${r.received_status ? r.received_status.toLowerCase().replace(' ', '-') : 'pending'}">${r.received_status || 'Pending'}</span></td>
-        <td>${r.requester_feedback || '<span class="text-secondary">-</span>'}</td>
+        <td>#REQ-${escapeHtml(r.id)}</td>
+        <td><strong>${escapeHtml(r.requested_by_name)}</strong></td>
+        <td>${escapeHtml(r.asset_name)}</td>
+        <td>${escapeHtml(r.asset_type)}</td>
+        <td>${escapeHtml(r.purpose)}</td>
+        <td>${escapeHtml(new Date(r.created_at).toLocaleDateString())}</td>
+        <td><span class="status-badge ${escapeHtml(r.status.toLowerCase())}">${escapeHtml(r.status)}</span></td>
+        <td>${r.manager_notes ? escapeHtml(r.manager_notes) : '<span class="text-secondary">-</span>'}</td>
+        <td><span class="status-badge ${escapeHtml(r.received_status ? r.received_status.toLowerCase().replace(' ', '-') : 'pending')}">${escapeHtml(r.received_status || 'Pending')}</span></td>
+        <td>${r.requester_feedback ? escapeHtml(r.requester_feedback) : '<span class="text-secondary">-</span>'}</td>
         <td>${actionBtn}</td>
       </tr>
     `;
@@ -2424,15 +2455,15 @@ function renderUserTableRows(users) {
   tbody.innerHTML = users.map(u => {
     return `
       <tr>
-        <td><strong>${u.username}</strong></td>
-        <td>${u.name}</td>
-        <td>${formatRole(u.role)}</td>
-        <td>${u.department}</td>
-        <td><span class="status-badge ${u.status === 'Active' ? 'active' : 'disposed'}">${u.status}</span></td>
+        <td><strong>${escapeHtml(u.username)}</strong></td>
+        <td>${escapeHtml(u.name)}</td>
+        <td>${escapeHtml(formatRole(u.role))}</td>
+        <td>${escapeHtml(u.department)}</td>
+        <td><span class="status-badge ${u.status === 'Active' ? 'active' : 'disposed'}">${escapeHtml(u.status)}</span></td>
         <td>
           <div style="display:flex; gap:0.5rem;">
-            <button class="btn btn-outline btn-sm" onclick="openEditUserModal('${u.id}')">Edit</button>
-            <button class="btn btn-outline btn-sm" onclick="openResetPasswordModal('${u.id}', '${u.username}')">Reset Pass</button>
+            <button class="btn btn-outline btn-sm" onclick="openEditUserModal('${escapeHtml(u.id)}')">Edit</button>
+            <button class="btn btn-outline btn-sm" onclick="openResetPasswordModal('${escapeHtml(u.id)}', '${escapeHtml(u.username)}')">Reset Pass</button>
           </div>
         </td>
       </tr>
@@ -2493,12 +2524,12 @@ function renderAuditTableRows(logs) {
   tbody.innerHTML = logs.map(l => {
     return `
       <tr>
-        <td style="font-size:0.8rem; white-space:nowrap;">${new Date(l.timestamp).toLocaleString()}</td>
-        <td><strong>${l.username}</strong></td>
-        <td><span class="status-badge ${l.action_type === 'CREATE' ? 'active' : l.action_type === 'DELETE' ? 'disposed' : 'in-storage'}">${l.action_type}</span></td>
-        <td>${l.table_name}</td>
-        <td><code>${l.record_id}</code></td>
-        <td style="font-size:0.85rem;">${l.details}</td>
+        <td style="font-size:0.8rem; white-space:nowrap;">${escapeHtml(new Date(l.timestamp).toLocaleString())}</td>
+        <td><strong>${escapeHtml(l.username)}</strong></td>
+        <td><span class="status-badge ${l.action_type === 'CREATE' ? 'active' : l.action_type === 'DELETE' ? 'disposed' : 'in-storage'}">${escapeHtml(l.action_type)}</span></td>
+        <td>${escapeHtml(l.table_name)}</td>
+        <td><code>${escapeHtml(l.record_id)}</code></td>
+        <td style="font-size:0.85rem;">${escapeHtml(l.details)}</td>
       </tr>
     `;
   }).join('');
@@ -2624,7 +2655,7 @@ async function viewAssetDetails(assetId) {
     const data = await res.json();
     
     // Set text contents
-    document.getElementById('detail-asset-id').innerHTML = `Asset Details: <code>${data.asset.id}</code>`;
+    document.getElementById('detail-asset-id').innerHTML = `Asset Details: <code>${escapeHtml(data.asset.id)}</code>`;
     document.getElementById('det-name').textContent = data.asset.name;
     document.getElementById('det-category').textContent = data.asset.category;
     document.getElementById('det-type').textContent = data.asset.type;
@@ -2737,9 +2768,9 @@ async function viewAssetDetails(assetId) {
         <div class="timeline-item">
           <div class="timeline-dot ${e.class}"></div>
           <div class="timeline-content">
-            <div class="timeline-date">${new Date(e.date).toLocaleDateString()}</div>
-            <div class="timeline-title">${e.title}</div>
-            <div class="timeline-desc">${e.desc}</div>
+            <div class="timeline-date">${escapeHtml(new Date(e.date).toLocaleDateString())}</div>
+            <div class="timeline-title">${escapeHtml(e.title)}</div>
+            <div class="timeline-desc">${escapeHtml(e.desc)}</div>
           </div>
         </div>
       `).join('');
@@ -2776,6 +2807,10 @@ function openRegisterAssetModal() {
 
 async function submitRegisterAsset(e) {
   e.preventDefault();
+  if (!acquireFormLock('register-asset-form')) {
+    showToast('Registration already in progress...', 'warning');
+    return;
+  }
   const payload = {
     name: document.getElementById('reg-name').value,
     type: document.getElementById('reg-type').value,
@@ -2805,6 +2840,8 @@ async function submitRegisterAsset(e) {
     }
   } catch (err) {
     showToast('Network error during registration.', 'error');
+  } finally {
+    releaseFormLock('register-asset-form');
   }
 }
 
@@ -2913,13 +2950,13 @@ async function submitBulkImport() {
     if (res.ok) {
       const errorCount = data.errorCount || 0;
       resultDiv.innerHTML = `
-        <div class="status-badge active" style="margin-bottom:0.5rem;">✓ ${data.imported} assets imported</div>
-        ${errorCount ? `<div class="status-badge rejected">${errorCount} error${errorCount !== 1 ? 's' : ''}</div>` : ''}
+        <div class="status-badge active" style="margin-bottom:0.5rem;">✓ ${escapeHtml(data.imported)} assets imported</div>
+        ${errorCount ? `<div class="status-badge rejected">${escapeHtml(errorCount)} error${errorCount !== 1 ? 's' : ''}</div>` : ''}
         ${data.assets.length ? `<div style="font-size:0.85rem; margin-top:0.5rem; max-height:200px; overflow-y:auto;">
-          ${data.assets.map(a => `<div>${a.id} — ${a.name}</div>`).join('')}
+          ${data.assets.map(a => `<div>${escapeHtml(a.id)} — ${escapeHtml(a.name)}</div>`).join('')}
         </div>` : ''}
         ${errorCount ? `<div style="font-size:0.85rem; margin-top:0.75rem; max-height:180px; overflow-y:auto;">
-          ${data.errors.map(err => `<div>Row ${err.row}: ${err.message}</div>`).join('')}
+          ${data.errors.map(err => `<div>Row ${escapeHtml(err.row)}: ${escapeHtml(err.message)}</div>`).join('')}
         </div>` : ''}
       `;
       renderView('register');
@@ -2934,10 +2971,19 @@ async function submitBulkImport() {
 // 5. Change Own Password
 async function submitChangeOwnPassword(e) {
   e.preventDefault();
-  const payload = {
-    currentPassword: document.getElementById('own-pass-current').value,
-    newPassword: document.getElementById('own-pass-new').value
-  };
+  const currentPassword = document.getElementById('own-pass-current').value;
+  const newPassword = document.getElementById('own-pass-new').value;
+  if (!currentPassword) {
+    showToast('Please enter your current password.', 'warning');
+    document.getElementById('own-pass-current').focus();
+    return;
+  }
+  if (!newPassword || newPassword.length < 6) {
+    showToast('New password must be at least 6 characters.', 'warning');
+    document.getElementById('own-pass-new').focus();
+    return;
+  }
+  const payload = { currentPassword, newPassword };
 
   try {
     const res = await fetch('/api/auth/password', {
@@ -2978,7 +3024,7 @@ async function openAssignAssetModal() {
     const assignable = assets.filter(a => (a.status === 'Active' && !a.assigned_to_name) || a.status === 'In Storage');
     
     assetSelect.innerHTML = '<option value="">Select Asset to Assign</option>' + 
-      assignable.map(a => `<option value="${a.id}">${a.id} - ${a.name} (${a.status})</option>`).join('');
+      assignable.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.id)} - ${escapeHtml(a.name)} (${escapeHtml(a.status)})</option>`).join('');
       
     // Load active users
     const uRes = await fetch('/api/users');
@@ -2986,7 +3032,7 @@ async function openAssignAssetModal() {
     const activeUsers = users.filter(u => u.status === 'Active' && u.role !== 'Admin');
     
     userSelect.innerHTML = '<option value="">Select Assignee</option>' + 
-      activeUsers.map(u => `<option value="${u.id}">${u.name} (${formatRole(u.role)} - ${u.department})</option>`).join('');
+      activeUsers.map(u => `<option value="${escapeHtml(u.id)}">${escapeHtml(u.name)} (${escapeHtml(formatRole(u.role))} - ${escapeHtml(u.department)})</option>`).join('');
       
   } catch (err) {
     assetSelect.innerHTML = '<option value="">Error loading list</option>';
@@ -2995,9 +3041,21 @@ async function openAssignAssetModal() {
 
 async function submitAssignAsset(e) {
   e.preventDefault();
+  const assetEl = document.getElementById('assign-asset-select');
+  const userEl = document.getElementById('assign-user-select');
+  if (!assetEl.value) {
+    showToast('Please select an asset to assign.', 'warning');
+    assetEl.focus();
+    return;
+  }
+  if (!userEl.value) {
+    showToast('Please select an assignee.', 'warning');
+    userEl.focus();
+    return;
+  }
   const payload = {
-    assetId: document.getElementById('assign-asset-select').value,
-    assignedTo: document.getElementById('assign-user-select').value,
+    assetId: assetEl.value,
+    assignedTo: userEl.value,
     assignmentDate: document.getElementById('assign-date').value,
     purpose: document.getElementById('assign-purpose').value,
     notes: document.getElementById('assign-notes').value
@@ -3044,7 +3102,7 @@ async function openTransferAssetModal() {
     const assigned = assets.filter(a => a.status === 'Active' && a.assigned_to_name);
     
     assetSelect.innerHTML = '<option value="">Select Asset to Transfer</option>' + 
-      assigned.map(a => `<option value="${a.id}" data-assignee="${a.assigned_to_name} (${a.assigned_to_department})">${a.id} - ${a.name}</option>`).join('');
+      assigned.map(a => `<option value="${escapeHtml(a.id)}" data-assignee="${escapeHtml(a.assigned_to_name)} (${escapeHtml(a.assigned_to_department)})">${escapeHtml(a.id)} - ${escapeHtml(a.name)}</option>`).join('');
       
     // Set change trigger to display current assignee
     assetSelect.onchange = () => {
@@ -3059,7 +3117,7 @@ async function openTransferAssetModal() {
     const activeUsers = users.filter(u => u.status === 'Active' && u.role !== 'Admin');
     
     userSelect.innerHTML = '<option value="">Select Target Assignee</option>' + 
-      activeUsers.map(u => `<option value="${u.id}">${u.name} (${formatRole(u.role)} - ${u.department})</option>`).join('');
+      activeUsers.map(u => `<option value="${escapeHtml(u.id)}">${escapeHtml(u.name)} (${escapeHtml(formatRole(u.role))} - ${escapeHtml(u.department)})</option>`).join('');
   } catch (e) {
     assetSelect.innerHTML = '<option value="">Error loading list</option>';
   }
@@ -3110,7 +3168,7 @@ async function openRecordMaintenanceModal() {
     const maintainable = assets.filter(a => a.status !== 'Disposed');
     
     assetSelect.innerHTML = '<option value="">Select Asset</option>' + 
-      maintainable.map(a => `<option value="${a.id}">${a.id} - ${a.name} (${a.status})</option>`).join('');
+      maintainable.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.id)} - ${escapeHtml(a.name)} (${escapeHtml(a.status)})</option>`).join('');
   } catch (e) {
     assetSelect.innerHTML = '<option value="">Error loading assets</option>';
   }
@@ -3138,11 +3196,32 @@ function updateExpectedCompletionHint() {
 
 async function submitMaintenanceEvent(e) {
   e.preventDefault();
+  const assetEl = document.getElementById('maint-asset-select');
+  const providerEl = document.getElementById('maint-provider');
+  const durationEl = document.getElementById('maint-duration');
+
+  if (!assetEl.value) {
+    showToast('Please select an asset to service.', 'warning');
+    assetEl.focus();
+    return;
+  }
+  if (!providerEl.value.trim()) {
+    showToast('Please enter the service provider.', 'warning');
+    providerEl.focus();
+    return;
+  }
+  // Estimated duration is required so a review notification can be scheduled
+  // (mirrors the server-side rule). Give clear inline feedback before the API call.
+  if (!durationEl.value || parseInt(durationEl.value, 10) <= 0) {
+    showToast('Please enter an estimated duration in days.', 'warning');
+    durationEl.focus();
+    return;
+  }
   const payload = {
-    assetId: document.getElementById('maint-asset-select').value,
-    serviceProvider: document.getElementById('maint-provider').value,
+    assetId: assetEl.value,
+    serviceProvider: providerEl.value,
     serviceDate: document.getElementById('maint-date').value,
-    estimatedDurationDays: document.getElementById('maint-duration').value,
+    estimatedDurationDays: durationEl.value,
     nextServiceDate: document.getElementById('maint-next-date').value || null,
     cost: document.getElementById('maint-cost').value,
     description: document.getElementById('maint-desc').value
@@ -3183,7 +3262,7 @@ async function openDisposeAssetModal() {
     const activeAssets = assets.filter(a => a.status !== 'Disposed');
     
     assetSelect.innerHTML = '<option value="">Select Asset to Dispose</option>' + 
-      activeAssets.map(a => `<option value="${a.id}">${a.id} - ${a.name} (${a.status})</option>`).join('');
+      activeAssets.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.id)} - ${escapeHtml(a.name)} (${escapeHtml(a.status)})</option>`).join('');
   } catch(e) {
     assetSelect.innerHTML = '<option value="">Error loading assets</option>';
   }
@@ -3191,12 +3270,25 @@ async function openDisposeAssetModal() {
 
 async function submitDisposal(e) {
   e.preventDefault();
+  const assetEl = document.getElementById('disp-asset-select');
+  const reasonEl = document.getElementById('disp-reason');
+
+  if (!assetEl.value) {
+    showToast('Please select an asset to dispose.', 'warning');
+    assetEl.focus();
+    return;
+  }
+  if (!reasonEl.value.trim()) {
+    showToast('Please provide a disposal reason.', 'warning');
+    reasonEl.focus();
+    return;
+  }
   
   const payload = {
-    assetId: document.getElementById('disp-asset-select').value,
+    assetId: assetEl.value,
     disposalDate: document.getElementById('disp-date').value,
     method: document.getElementById('disp-method').value,
-    reason: document.getElementById('disp-reason').value
+    reason: reasonEl.value
   };
   
   try {
@@ -3238,7 +3330,7 @@ async function populateAvailableAssetsDropdown() {
     select.innerHTML = `<option value="">-- Choose an in-stock asset, or describe a new one below --</option>` +
       (available.length === 0
         ? `<option value="" disabled>No assets currently available in stock</option>`
-        : available.map(a => `<option value="${a.id}" data-name="${a.name}" data-type="${a.type || a.category}">${a.name} (${a.id}) — ${a.category}</option>`).join(''));
+        : available.map(a => `<option value="${escapeHtml(a.id)}" data-name="${escapeHtml(a.name)}" data-type="${escapeHtml(a.type || a.category)}">${escapeHtml(a.name)} (${escapeHtml(a.id)}) — ${escapeHtml(a.category)}</option>`).join(''));
   } catch (err) {
     select.innerHTML = `<option value="">-- Could not load available assets --</option>`;
   }
@@ -3253,10 +3345,29 @@ function handleAvailableAssetSelect(selectEl) {
 
 async function submitRequisition(e) {
   e.preventDefault();
+  const nameEl = document.getElementById('req-asset-name');
+  const typeEl = document.getElementById('req-asset-type');
+  const purposeEl = document.getElementById('req-purpose');
+
+  if (!nameEl.value.trim()) {
+    showToast('Please enter the asset name.', 'warning');
+    nameEl.focus();
+    return;
+  }
+  if (!typeEl.value.trim()) {
+    showToast('Please enter the asset type.', 'warning');
+    typeEl.focus();
+    return;
+  }
+  if (!purposeEl.value.trim()) {
+    showToast('Please state the purpose for the request.', 'warning');
+    purposeEl.focus();
+    return;
+  }
   const payload = {
-    assetName: document.getElementById('req-asset-name').value,
-    assetType: document.getElementById('req-asset-type').value,
-    purpose: document.getElementById('req-purpose').value
+    assetName: nameEl.value,
+    assetType: typeEl.value,
+    purpose: purposeEl.value
   };
   
   try {
@@ -3342,12 +3453,17 @@ function openBulkEmployeeImportModal() {
 
 async function submitBulkEmployeeImport(e) {
   e.preventDefault();
+  if (!acquireFormLock('bulk-user-import-form')) {
+    showToast('Import already in progress...', 'warning');
+    return;
+  }
   const csvText = document.getElementById('bulk-user-csv').value.trim();
   const resultDiv = document.getElementById('bulk-user-import-result');
   resultDiv.style.display = 'block';
 
   if (!csvText) {
     resultDiv.innerHTML = '<div class="status-badge rejected">Paste CSV data first.</div>';
+    releaseFormLock('bulk-user-import-form');
     return;
   }
 
@@ -3377,7 +3493,7 @@ async function submitBulkEmployeeImport(e) {
 
     const data = await res.json();
     if (!res.ok) {
-      resultDiv.innerHTML = `<div class="status-badge rejected">${data.error || 'Bulk import failed.'}</div>`;
+      resultDiv.innerHTML = `<div class="status-badge rejected">${escapeHtml(data.error || 'Bulk import failed.')}</div>`;
       return;
     }
 
@@ -3386,18 +3502,20 @@ async function submitBulkEmployeeImport(e) {
     const summary = `Imported ${successCount} employee${successCount !== 1 ? 's' : ''}`;
 
     resultDiv.innerHTML = `
-      <div class="status-badge active">✓ ${summary}</div>
-      ${errorCount ? `<div class="status-badge rejected">${errorCount} row error${errorCount !== 1 ? 's' : ''}</div>` : ''}
+      <div class="status-badge active">✓ ${escapeHtml(summary)}</div>
+      ${errorCount ? `<div class="status-badge rejected">${escapeHtml(errorCount)} row error${errorCount !== 1 ? 's' : ''}</div>` : ''}
       ${data.users.length ? `<div style="margin-top:0.5rem; max-height:200px; overflow-y:auto;">
-        ${data.users.map(u => `<div>${u.username} — ${u.name}</div>`).join('')}
+        ${data.users.map(u => `<div>${escapeHtml(u.username)} — ${escapeHtml(u.name)}</div>`).join('')}
       </div>` : ''}
       ${errorCount ? `<div style="font-size:0.85rem; margin-top:0.75rem; max-height:180px; overflow-y:auto;">
-        ${data.errors.map(err => `<div>Row ${err.row}: ${err.message}</div>`).join('')}
+        ${data.errors.map(err => `<div>Row ${escapeHtml(err.row)}: ${escapeHtml(err.message)}</div>`).join('')}
       </div>` : ''}
     `;
     renderView('users');
   } catch (err) {
-    resultDiv.innerHTML = `<div class="status-badge rejected">Network error: ${err.message}</div>`;
+    resultDiv.innerHTML = `<div class="status-badge rejected">Network error: ${escapeHtml(err.message)}</div>`;
+  } finally {
+    releaseFormLock('bulk-user-import-form');
   }
 }
 
@@ -3427,6 +3545,10 @@ function openEditUserModal(id) {
 
 async function submitUserForm(e) {
   e.preventDefault();
+  if (!acquireFormLock('user-form')) {
+    showToast('Operation already in progress...', 'warning');
+    return;
+  }
   const id = document.getElementById('user-form-id').value;
   const isEdit = !!id;
   
@@ -3438,7 +3560,14 @@ async function submitUserForm(e) {
   };
   
   if (!isEdit) {
-    payload.password = document.getElementById('usr-password').value;
+    const password = document.getElementById('usr-password').value;
+    if (!password || password.length < 6) {
+      showToast('Password is required and must be at least 6 characters.', 'warning');
+      document.getElementById('usr-password').focus();
+      releaseFormLock('user-form');
+      return;
+    }
+    payload.password = password;
   } else {
     payload.status = document.getElementById('usr-status').value;
   }
@@ -3462,6 +3591,8 @@ async function submitUserForm(e) {
     }
   } catch (err) {
     showToast('Network error during user management.', 'error');
+  } finally {
+    releaseFormLock('user-form');
   }
 }
 
@@ -3475,9 +3606,13 @@ function openResetPasswordModal(id, username) {
 async function submitResetPassword(e) {
   e.preventDefault();
   const id = document.getElementById('change-pass-user-id').value;
-  const payload = {
-    newPassword: document.getElementById('change-pass-new').value
-  };
+  const newPassword = document.getElementById('change-pass-new').value;
+  if (!newPassword || newPassword.length < 6) {
+    showToast('New password must be at least 6 characters.', 'warning');
+    document.getElementById('change-pass-new').focus();
+    return;
+  }
+  const payload = { newPassword };
   
   try {
     const res = await fetch(`/api/users/${id}/password`, {
@@ -3591,9 +3726,9 @@ async function loadUpcomingAlerts() {
       badge.style.display = 'block';
       countSpan.textContent = count > 99 ? '99+' : String(count);
       alertsList.innerHTML = notifications.map((note, index) => `
-        <li class="alert-item" role="menuitem" tabindex="0" data-action="${note.action}" data-asset-id="${note.assetId}" data-index="${index}">
-          <div class="alert-item-title ${note.type === 'maintenance-ready' ? 'text-danger' : ''}">${note.title}</div>
-          <div class="alert-item-detail">${note.detail}</div>
+        <li class="alert-item" role="menuitem" tabindex="0" data-action="${escapeHtml(note.action)}" data-asset-id="${escapeHtml(note.assetId)}" data-index="${index}">
+          <div class="alert-item-title ${note.type === 'maintenance-ready' ? 'text-danger' : ''}">${escapeHtml(note.title)}</div>
+          <div class="alert-item-detail">${escapeHtml(note.detail)}</div>
         </li>
       `).join('');
     } else {
@@ -3658,7 +3793,7 @@ function showToast(message, type = 'info') {
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
   toast.innerHTML = `
-    <span>${message}</span>
+    <span>${escapeHtml(message)}</span>
     <button class="toast-close">&times;</button>
   `;
   

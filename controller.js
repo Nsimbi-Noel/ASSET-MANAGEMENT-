@@ -36,7 +36,7 @@ function generateAssetId() {
 
 // --- Authentication Controllers ---
 
-function login(username, password) {
+async function login(username, password) {
   const query = db.prepare('SELECT * FROM users WHERE username = ?');
   const user = query.get(username);
   
@@ -48,7 +48,7 @@ function login(username, password) {
     throw new Error('This user account has been deactivated');
   }
   
-  const isMatch = verifyPassword(password, user.password);
+  const isMatch = await verifyPassword(password, user.password);
   if (!isMatch) {
     throw new Error('Invalid username or password');
   }
@@ -135,11 +135,19 @@ function listUsers(reqUser) {
   return query.all();
 }
 
-function createUser(reqUser, { username, password, name, role, department }) {
+async function createUser(reqUser, { username, password, name, role, department }) {
   if (reqUser.role !== 'Admin') throw new Error('Unauthorized');
   
   if (!username || !password || !name || !role || !department) {
     throw new Error('All fields are required');
+  }
+
+  const VALID_ROLES = ['Admin', 'AssetManager', 'Employee'];
+  if (!VALID_ROLES.includes(role)) {
+    throw new Error('Invalid role. Must be Admin, AssetManager, or Employee.');
+  }
+  if (typeof password !== 'string' || password.length < 6) {
+    throw new Error('Password must be at least 6 characters long');
   }
   
   const existingCheck = db.prepare('SELECT id FROM users WHERE username = ?');
@@ -151,7 +159,7 @@ function createUser(reqUser, { username, password, name, role, department }) {
     INSERT INTO users (username, password, name, role, department)
     VALUES (?, ?, ?, ?, ?)
   `);
-  const result = insert.run(username, hashPassword(password), name, role, department);
+  const result = insert.run(username, await hashPassword(password), name, role, department);
   const newId = result.lastInsertRowid;
   
   logAudit(reqUser.id, reqUser.username, 'CREATE', 'users', String(newId), `Created user account: ${username} (${role})`);
@@ -179,14 +187,14 @@ function updateUser(reqUser, id, { name, role, department, status }) {
   return { id, name, role, department, status };
 }
 
-function changePassword(reqUser, id, { newPassword }) {
+async function changePassword(reqUser, id, { newPassword }) {
   if (reqUser.role !== 'Admin') throw new Error('Unauthorized');
   if (!newPassword || newPassword.length < 6) {
     throw new Error('Password must be at least 6 characters long');
   }
   
   const update = db.prepare('UPDATE users SET password = ? WHERE id = ?');
-  update.run(hashPassword(newPassword), id);
+  update.run(await hashPassword(newPassword), id);
   
   const userQuery = db.prepare('SELECT username FROM users WHERE id = ?');
   const targetUser = userQuery.get(id);
@@ -196,12 +204,12 @@ function changePassword(reqUser, id, { newPassword }) {
   return { success: true };
 }
 
-function changeOwnPassword(user, { currentPassword, newPassword }) {
+async function changeOwnPassword(user, { currentPassword, newPassword }) {
   const query = db.prepare('SELECT * FROM users WHERE id = ?');
   const dbUser = query.get(user.id);
 
   if (!dbUser) throw new Error('User not found');
-  if (!verifyPassword(currentPassword, dbUser.password)) {
+  if (!(await verifyPassword(currentPassword, dbUser.password))) {
     throw new Error('Current password is incorrect');
   }
   if (!newPassword || newPassword.length < 6) {
@@ -209,7 +217,7 @@ function changeOwnPassword(user, { currentPassword, newPassword }) {
   }
 
   const update = db.prepare('UPDATE users SET password = ? WHERE id = ?');
-  update.run(hashPassword(newPassword), user.id);
+  update.run(await hashPassword(newPassword), user.id);
 
   logAudit(user.id, user.username, 'UPDATE', 'users', String(user.id), 'Changed own password');
   return { success: true };
@@ -236,6 +244,18 @@ function registerAsset(reqUser, data) {
   
   if (!name || !type || !category || !serial_number || !condition || !acquisition_date || !cost || !supplier || !source || !status) {
     throw new Error('Missing mandatory asset registration fields');
+  }
+
+  const VALID_STATUSES = ['Active', 'In Storage', 'Under Maintenance', 'Disposed'];
+  if (!VALID_STATUSES.includes(status)) {
+    throw new Error('Invalid asset status. Must be Active, In Storage, Under Maintenance, or Disposed.');
+  }
+  const VALID_CONDITIONS = ['New', 'Good', 'Refurbished', 'Damaged'];
+  if (!VALID_CONDITIONS.includes(condition)) {
+    throw new Error('Invalid condition. Must be New, Good, Refurbished, or Damaged.');
+  }
+  if (isNaN(parseFloat(cost)) || parseFloat(cost) < 0) {
+    throw new Error('Cost must be a non-negative number');
   }
   
   const id = generateAssetId();
@@ -281,7 +301,7 @@ function updateAsset(reqUser, id, data) {
   return { success: true };
 }
 
-function bulkRegisterAssets(reqUser, { assets }) {
+async function bulkRegisterAssets(reqUser, { assets }) {
   if (reqUser.role !== 'AssetManager') throw new Error('Unauthorized');
   if (!Array.isArray(assets) || assets.length === 0) {
     throw new Error('Provide an array of asset objects');
@@ -290,38 +310,48 @@ function bulkRegisterAssets(reqUser, { assets }) {
   const results = [];
   const errors = [];
 
-  for (let i = 0; i < assets.length; i++) {
-    const data = assets[i];
-    if (!data.name || !data.type || !data.category || !data.serial_number) {
-      errors.push({ row: i + 1, message: 'Missing required fields (name, type, category, serial_number)' });
-      continue;
+  const insert = db.prepare(`
+    INSERT INTO assets (id, name, type, category, serial_number, condition, acquisition_date, cost, supplier, source, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  db.exec('BEGIN TRANSACTION');
+  let transactionActive = true;
+  try {
+    for (let i = 0; i < assets.length; i++) {
+      const data = assets[i];
+      if (!data.name || !data.type || !data.category || !data.serial_number) {
+        errors.push({ row: i + 1, message: 'Missing required fields (name, type, category, serial_number)' });
+        continue;
+      }
+      try {
+        const id = generateAssetId();
+        insert.run(
+          id, data.name, data.type, data.category, data.serial_number,
+          data.condition || 'Good',
+          data.acquisition_date || new Date().toISOString().split('T')[0],
+          parseFloat(data.cost || 0),
+          data.supplier || 'Unknown',
+          data.source || 'Procurement',
+          data.status || 'In Storage'
+        );
+        logAudit(reqUser.id, reqUser.username, 'CREATE', 'assets', id, `Bulk imported asset ${data.name} (${id})`);
+        results.push({ id, name: data.name });
+      } catch (err) {
+        errors.push({ row: i + 1, message: err.message });
+      }
     }
-    try {
-      const id = generateAssetId();
-      const insert = db.prepare(`
-        INSERT INTO assets (id, name, type, category, serial_number, condition, acquisition_date, cost, supplier, source, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      insert.run(
-        id, data.name, data.type, data.category, data.serial_number,
-        data.condition || 'Good',
-        data.acquisition_date || new Date().toISOString().split('T')[0],
-        parseFloat(data.cost || 0),
-        data.supplier || 'Unknown',
-        data.source || 'Procurement',
-        data.status || 'In Storage'
-      );
-      logAudit(reqUser.id, reqUser.username, 'CREATE', 'assets', id, `Bulk imported asset ${data.name} (${id})`);
-      results.push({ id, name: data.name });
-    } catch (err) {
-      errors.push({ row: i + 1, message: err.message });
-    }
+    db.exec('COMMIT');
+    transactionActive = false;
+  } catch (err) {
+    if (transactionActive) db.exec('ROLLBACK');
+    throw err;
   }
 
   return { success: true, imported: results.length, errorCount: errors.length, assets: results, errors };
 }
 
-function bulkCreateUsers(reqUser, { users }) {
+async function bulkCreateUsers(reqUser, { users }) {
   if (reqUser.role !== 'Admin') throw new Error('Unauthorized');
   if (!Array.isArray(users) || users.length === 0) {
     throw new Error('Provide an array of user objects');
@@ -335,33 +365,42 @@ function bulkCreateUsers(reqUser, { users }) {
     VALUES (?, ?, ?, ?, ?, ?)
   `);
 
-  for (let i = 0; i < users.length; i += 1) {
-    const data = users[i];
-    if (!data.username || !data.password || !data.name || !data.department) {
-      errors.push({ row: i + 1, message: 'Missing required fields (username, password, name, department)' });
-      continue;
-    }
+  db.exec('BEGIN TRANSACTION');
+  let transactionActive = true;
+  try {
+    for (let i = 0; i < users.length; i += 1) {
+      const data = users[i];
+      if (!data.username || !data.password || !data.name || !data.department) {
+        errors.push({ row: i + 1, message: 'Missing required fields (username, password, name, department)' });
+        continue;
+      }
 
-    if (existingCheck.get(data.username)) {
-      errors.push({ row: i + 1, message: 'Username already taken' });
-      continue;
-    }
+      if (existingCheck.get(data.username)) {
+        errors.push({ row: i + 1, message: 'Username already taken' });
+        continue;
+      }
 
-    try {
-      const result = insert.run(
-        data.username,
-        hashPassword(data.password),
-        data.name,
-        'Employee',
-        data.department,
-        data.status || 'Active'
-      );
-      const newId = result.lastInsertRowid;
-      logAudit(reqUser.id, reqUser.username, 'CREATE', 'users', String(newId), `Bulk imported user ${data.username} (Employee)`);
-      results.push({ id: newId, username: data.username, name: data.name, department: data.department, role: 'Employee' });
-    } catch (err) {
-      errors.push({ row: i + 1, message: err.message });
+      try {
+        const result = insert.run(
+          data.username,
+          await hashPassword(data.password),
+          data.name,
+          'Employee',
+          data.department,
+          data.status || 'Active'
+        );
+        const newId = result.lastInsertRowid;
+        logAudit(reqUser.id, reqUser.username, 'CREATE', 'users', String(newId), `Bulk imported user ${data.username} (Employee)`);
+        results.push({ id: newId, username: data.username, name: data.name, department: data.department, role: 'Employee' });
+      } catch (err) {
+        errors.push({ row: i + 1, message: err.message });
+      }
     }
+    db.exec('COMMIT');
+    transactionActive = false;
+  } catch (err) {
+    if (transactionActive) db.exec('ROLLBACK');
+    throw err;
   }
 
   return { success: true, imported: results.length, errorCount: errors.length, users: results, errors };
@@ -570,12 +609,17 @@ function transferAsset(reqUser, { assetId, toUserId, reason, transferDate }) {
     `);
     returnOld.run(transferDate, activeAssign.id);
     
-    // 2. Insert new assignment
+    // 2. Insert new assignment (keeping the same 5-year contract convention used
+    //    in assignAsset so transferred assets still get a contract_end_date and
+    //    contract-expiry notifications continue to work).
+    const transferredEnd = new Date(transferDate);
+    transferredEnd.setFullYear(transferredEnd.getFullYear() + 5);
+    const transferredEndStr = transferredEnd.toISOString().split('T')[0];
     const insertNew = db.prepare(`
-      INSERT INTO assignments (asset_id, assigned_to, assigned_by, assignment_date, purpose, notes, confirmed_receipt, status)
-      VALUES (?, ?, ?, ?, ?, 'Transferred from previous assignee', 0, 'Active')
+      INSERT INTO assignments (asset_id, assigned_to, assigned_by, assignment_date, contract_end_date, purpose, notes, confirmed_receipt, status)
+      VALUES (?, ?, ?, ?, ?, ?, 'Transferred from previous assignee', 0, 'Active')
     `);
-    insertNew.run(assetId, toUserId, reqUser.id, transferDate, activeAssign.purpose);
+    insertNew.run(assetId, toUserId, reqUser.id, transferDate, transferredEndStr, activeAssign.purpose);
     
     // 3. Record transfer event
     const insertTransfer = db.prepare(`
@@ -589,12 +633,12 @@ function transferAsset(reqUser, { assetId, toUserId, reason, transferDate }) {
     updateAsset.run(assetId);
     
     // 5. Log audit
-    const uQuery = db.prepare('SELECT name FROM users WHERE id IN (?, ?)');
+    const uQuery = db.prepare('SELECT id, name FROM users WHERE id IN (?, ?)');
     const names = uQuery.all(fromUserId, toUserId);
     const fromName = names.find(n => n.id === fromUserId)?.name || String(fromUserId);
     const toName = names.find(n => n.id === parseInt(toUserId, 10))?.name || String(toUserId);
     
-  logAudit(reqUser.id, reqUser.username, 'CREATE', 'transfers', assetId, `Transferred asset ${assetId} from ${fromName} to ${toName}`);
+    logAudit(reqUser.id, reqUser.username, 'CREATE', 'transfers', assetId, `Transferred asset ${assetId} from ${fromName} to ${toName}`);
     
     db.exec('COMMIT');
     return { success: true };
@@ -688,7 +732,7 @@ function recordMaintenance(reqUser, { assetId, serviceProvider, description, cos
   }
 }
 
-function completeMaintenance(reqUser, maintenanceId, { completionDate, nextStatus, assignToId }) {
+function completeMaintenance(reqUser, maintenanceId, { completionDate, nextStatus, assignToId, disposalMethod, disposalReason }) {
   if (reqUser.role !== 'AssetManager') throw new Error('Unauthorized');
   if (!completionDate) throw new Error('Completion date is required');
   
@@ -697,7 +741,12 @@ function completeMaintenance(reqUser, maintenanceId, { completionDate, nextStatu
   if (!maint) throw new Error('Maintenance record not found');
   if (maint.completed === 1) throw new Error('Maintenance event is already closed');
   
-  const assetStatus = nextStatus || 'Active'; // default back to Active
+  // Validate the target status so a client cannot set an arbitrary/harmful value.
+  const VALID_STATUSES = ['Active', 'In Storage', 'Under Maintenance', 'Disposed'];
+  const assetStatus = nextStatus || 'In Storage';
+  if (!VALID_STATUSES.includes(assetStatus)) {
+    throw new Error('Invalid next status. Must be Active, In Storage, Under Maintenance, or Disposed.');
+  }
   
   db.exec('BEGIN TRANSACTION');
   try {
@@ -713,11 +762,38 @@ function completeMaintenance(reqUser, maintenanceId, { completionDate, nextStatu
     const updateAsset = db.prepare('UPDATE assets SET status = ? WHERE id = ?');
     updateAsset.run(assetStatus, maint.asset_id);
     
+    // 2b. If the manager chooses to dispose directly from the completion flow,
+    // create the disposal archive record atomically so the asset can never be
+    // left 'Disposed' without a matching disposals entry (previously the
+    // frontend called /api/disposals after the asset was already 'Disposed',
+    // which was rejected and silently dropped the archive record).
+    if (assetStatus === 'Disposed') {
+      const insertDisposal = db.prepare(`
+        INSERT INTO disposals (asset_id, disposal_date, method, reason, authorized_by)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      insertDisposal.run(
+        maint.asset_id,
+        completionDate,
+        disposalMethod || 'Scrapped',
+        disposalReason || 'Too damaged beyond repair after maintenance',
+        reqUser.id
+      );
+      // Also terminate any active assignment for the disposed asset.
+      const terminateAssignments = db.prepare(`
+        UPDATE assignments 
+        SET status = 'Returned', returned_date = ?, notes = notes || ' (Terminated due to asset disposal)'
+        WHERE asset_id = ? AND status = 'Active'
+      `);
+      terminateAssignments.run(completionDate, maint.asset_id);
+      logAudit(reqUser.id, reqUser.username, 'CREATE', 'disposals', maint.asset_id, `Disposed asset ${maint.asset_id} upon maintenance completion via ${disposalMethod || 'Scrapped'}`);
+    }
+    
     // 3. Log audit
     logAudit(reqUser.id, reqUser.username, 'UPDATE', 'maintenance', String(maintenanceId), `Completed maintenance on asset ${maint.asset_id}. Set status to ${assetStatus}`);
     
     db.exec('COMMIT');
-    return { success: true, assetId: maint.asset_id };
+    return { success: true, assetId: maint.asset_id, disposed: assetStatus === 'Disposed' };
   } catch (err) {
     db.exec('ROLLBACK');
     throw err;
@@ -731,6 +807,11 @@ function disposeAsset(reqUser, { assetId, disposalDate, method, reason }) {
   
   if (!assetId || !disposalDate || !method || !reason) {
     throw new Error('All fields (Asset ID, Date, Method, Reason) are required to dispose an asset');
+  }
+
+  const VALID_METHODS = ['Scrapped', 'Auctioned', 'Donated', 'Destroyed'];
+  if (!VALID_METHODS.includes(method)) {
+    throw new Error('Invalid disposal method. Must be Scrapped, Auctioned, Donated, or Destroyed.');
   }
   
   const asset = getAsset(assetId);

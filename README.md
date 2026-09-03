@@ -1,6 +1,6 @@
 # URSB Asset Management System
 
-A full-featured asset lifecycle management system for the Uganda Registration Services Bureau. Built with zero external dependencies — pure Node.js + SQLite.
+A full-featured asset lifecycle management system for the Uganda Registration Services Bureau. Built with Node.js + SQLite — only runtime dependency is `pdf-lib` for PDF export.
 
 ## Features
 
@@ -12,7 +12,7 @@ A full-featured asset lifecycle management system for the Uganda Registration Se
 - **Asset History Timeline** — Full lifecycle timeline per asset
 - **Audit Trail** — Immutable system change logs
 - **Session-Based Auth** — Secure PBKDF2 password hashing with rate-limited login
-- **Login Slideshow** — ICT-themed rotating background images on the sign-in page (auto-switches every 10 s)
+- **Login Slideshow** — Self-contained CSS gradient backgrounds on the sign-in page (auto-switches every 10 s)
 
 ## Role Permissions
 
@@ -50,9 +50,9 @@ git clone https://github.com/Nsimbi-Noel/ASSET-MANAGEMENT-.git
 cd ASSET-MANAGEMENT-
 ```
 
-### 2. Install Dependencies (Optional, for development)
+### 2. Install Dependencies
 
-This project is designed with zero external dependencies for its core functionality. However, if you plan to run tests or use development tools, you might need `npm`:
+The single runtime dependency (`pdf-lib`, used for PDF export) must be installed:
 
 ```bash
 npm install
@@ -180,7 +180,7 @@ All routes under `/api/`:
 
 **UX Improvements**
 - Logout button redesigned with a distinct red style (`btn-logout`) — no longer blends in with the sidebar; includes a hover animation.
-- Login page background replaced with an auto-cycling ICT slideshow (5 images, 10-second interval, 1.5-second cross-fade transition). Images are sourced from Unsplash.
+- Login page background replaced with an auto-cycling slideshow (5 slides, 10-second interval, 1.5-second cross-fade transition). The slides use self-contained CSS gradients so the page works offline/on-intranet without fetching third-party image URLs.
 
 ## Testing
 
@@ -190,4 +190,4 @@ To run the automated integration test suite:
 npm test
 ```
 
-This will execute `test_api.js` and verify core functionalities of the system.
+This will execute the `test_api.js` controller-level integration tests and the `test_http.js` HTTP tests (login/cookies/security headers/static serving) against an isolated throwaway database.
