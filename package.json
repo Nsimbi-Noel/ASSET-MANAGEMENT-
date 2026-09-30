@@ -1,7 +1,7 @@
 {
-  "name": "ursb-asset-management-system",
+  "name": "asset-management-system",
   "version": "1.0.0",
-  "description": "Internal web-based asset management system for the Uganda Registration Services Bureau (URSB). Tracks assets, assignments, transfers, maintenance, disposals, and user requests.",
+  "description": "Web-based institutional asset management system. Tracks assets, assignments, transfers, maintenance, disposals, and user requests across departments.",
   "main": "server.js",
   "scripts": {
     "test": "node test_api.js && node test_http.js",
@@ -9,13 +9,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Nsimbi-Noel/URSB-Asset-Management-System.git"
+    "url": "git+https://github.com/Nsimbi-Noel/ASSET-MANAGEMENT-.git"
   },
   "keywords": [
     "asset",
     "management",
     "inventory",
-    "ursb",
+    "institutional",
     "sqlite"
   ],
   "author": "",
@@ -25,9 +25,9 @@
     "node": ">=22.13.0"
   },
   "bugs": {
-    "url": "https://github.com/Nsimbi-Noel/URSB-Asset-Management-System/issues"
+    "url": "https://github.com/Nsimbi-Noel/ASSET-MANAGEMENT-/issues"
   },
-  "homepage": "https://github.com/Nsimbi-Noel/URSB-Asset-Management-System#readme",
+  "homepage": "https://github.com/Nsimbi-Noel/ASSET-MANAGEMENT-#readme",
   "dependencies": {
     "pdf-lib": "^1.17.1"
   }

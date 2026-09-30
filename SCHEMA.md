@@ -1,12 +1,19 @@
-# Detailed Database Schema: URSB Asset Management System
+# Detailed Database Schema: Asset Management System
 
-This document provides a comprehensive technical breakdown of the URSB Asset Management System (AMS) database architecture.
+This document provides a comprehensive technical breakdown of the Asset Management System (AMS) database architecture.
 
 ## 1. Entity Relationship Diagram (ERD)
 
-![URSB AMS ERD](https://private-us-east-1.manuscdn.com/sessionFile/GGH1oQAyfJzmPPE7noJD4L/sandbox/xabngGtiBCFFFvgTy12tK6-images_1781858016931_na1fn_L2hvbWUvdWJ1bnR1L3Vyc2ItYW1zL2VyZA.png?Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9wcml2YXRlLXVzLWVhc3QtMS5tYW51c2Nkbi5jb20vc2Vzc2lvbkZpbGUvR0dIMW9RQXlmSnptUFBFN25vSkQ0TC9zYW5kYm94L3hhYm5nR3RpQkNGRkZ2Z1R5MTJ0SzYtaW1hZ2VzXzE3ODE4NTgwMTY5MzFfbmExZm5fTDJodmJXVXZkV0oxYm5SMUwzVnljMkl0WVcxekwyVnlaQS5wbmciLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjE3OTg3NjE2MDB9fX1dfQ__&Key-Pair-Id=K2HSFNDJXOU9YS&Signature=G3JWDQCZlcHHcBxy8E2mh6PjpAWAoQw~U6CRg~t~z1I2~tFtjadmHw8~dTd-ybnVIOBVuqahBT6DlMPWFO5SAyORsvhCAnch0xK-j~DqtCsc16d5Y73TjKVlcXEQCQezpWSdRVq-0ZCdXxYNQxbcL~cKKZDYSsGyFP0FAur7uemW19Jabpn7nLpckyeXrlSau7mZRVQHTuBsFt1aKWf6T02RGo0E6hWgU8bxa~am7~QMiq5s2f8yJnsckf7G2cZQ0lgZjhO-Es-1m9lGqvnM8Qatvfnoi~CSYa5TW4b5bgGnKSOmauNLgwke-fgyfwTwfyu7uUHZVDxfR7NZuA3hPw__)
+![AMS ERD](https://private-us-east-1.manuscdn.com/sessionFile/GGH1oQAyfJzmPPE7noJD4L/sandbox/xabngGtiBCFFFvgTy12tK6-images_1781858016931_na1fn_L2hvbWUvdWJ1bnR1L3Vyc2ItYW1zL2VyZA.png?Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9wcml2YXRlLXVzLWVhc3QtMS5tYW51c2Nkbi5jb20vc2Vzc2lvbkZpbGUvR0dIMW9RQXlmSnptUFBFN25vSkQ0TC9zYW5kYm94L3hhYm5nR3RpQkNGRkZ2Z1R5MTJ0SzYtaW1hZ2VzXzE3ODE4NTgwMTY5MzFfbmExZm5fTDJodmJXVXZkV0oxYm5SMUwzVnljMkl0WVcxekwyVnlaQS5wbmciLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjE3OTg3NjE2MDB9fX1dfQ__&Key-Pair-Id=K2HSFNDJXOU9YS&Signature=G3JWDQCZlcHHcBxy8E2mh6PjpAWAoQw~U6CRg~t~z1I2~tFtjadmHw8~dTd-ybnVIOBVuqahBT6DlMPWFO5SAyORsvhCAnch0xK-j~DqtCsc16d5Y73TjKVlcXEQCQezpWSdRVq-0ZCdXxYNQxbcL~cKKZDYSsGyFP0FAur7uemW19Jabpn7nLpckyeXrlSau7mZRVQHTuBsFt1aKWf6T02RGo0E6hWgU8bxa~am7~QMiq5s2f8yJnsckf7G2cZQ0lgZjhO-Es-1m9lGqvnM8Qatvfnoi~CSYa5TW4b5bgGnKSOmauNLgwke-fgyfwTwfyu7uUHZVDxfR7NZuA3hPw__)
 
 The system is designed with a centralized `users` and `assets` architecture, where all transactions (assignments, transfers, maintenance, and disposals) are linked via foreign keys to ensure data integrity and full traceability.
+
+> **Source of truth for enumerated values.** Every allowed value listed in the
+> `CHECK` columns below is declared once in `constants.js` and injected into the
+> `CREATE TABLE` statements in `db.js` at startup. `controller.js` validates
+> against the same arrays, and the frontend reads them from `GET /api/config`.
+> Change a value in `constants.js` — do not edit the values in this document, the
+> HTML dropdowns, or the validation lists independently.
 
 ---
 
@@ -31,7 +38,7 @@ The primary inventory for all institutional assets.
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| `id` | TEXT | PRIMARY KEY | Custom ID (e.g., URSB-AST-0001) |
+| `id` | TEXT | PRIMARY KEY | Custom ID (e.g., AMS-AST-0001) |
 | `name` | TEXT | NOT NULL | Asset name/description |
 | `type` | TEXT | NOT NULL | Asset type (e.g., Laptop, Router) |
 | `category` | TEXT | NOT NULL | Category (e.g., IT Equipment, Furniture) |
@@ -100,7 +107,7 @@ Archives information regarding assets that have been retired.
 | `id` | INTEGER | PRIMARY KEY, AUTOINCREMENT | Disposal record ID |
 | `asset_id` | TEXT | FOREIGN KEY (assets.id) | Retired asset |
 | `disposal_date` | DATE | NOT NULL | Date of retirement |
-| `method` | TEXT | NOT NULL | Sale, Scrap, Donation, etc. |
+| `method` | TEXT | NOT NULL | One of `Scrapped`, `Auctioned`, `Donated`, `Destroyed` (see `DISPOSAL_METHODS` in `constants.js`) |
 | `reason` | TEXT | NOT NULL | Justification for disposal |
 | `authorized_by` | INTEGER | FOREIGN KEY (users.id) | Manager authorizing disposal |
 
@@ -116,7 +123,7 @@ Workflow for internal asset procurement or assignment requests.
 | `purpose` | TEXT | NOT NULL | Business justification |
 | `status` | TEXT | DEFAULT 'Pending', CHECK | Pending, Approved, Rejected, Revoked |
 | `requester_feedback` | TEXT | NULLABLE | Feedback from the requester (follow-up) |
-| `received_status` | TEXT | DEFAULT 'Pending' | Pending, Received, Not Received |
+| `received_status` | TEXT | DEFAULT 'Pending' | `Pending`, `Received`, `Not Received`. No DB CHECK — this column was added by migration, so it is validated in `controller.updateRequestFollowUp` against `RECEIVED_STATUS_VALUES`. |
 | `manager_notes` | TEXT | NULLABLE | Feedback from management |
 | `actioned_by` | INTEGER | FOREIGN KEY (users.id) | Manager who reviewed request |
 | `actioned_date` | DATE | NULLABLE | Date of review |

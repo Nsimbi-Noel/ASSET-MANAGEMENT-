@@ -1,6 +1,7 @@
 const { db } = require('./db');
 const { verifyPassword, hashPassword } = require('./crypto_utils');
 const crypto = require('crypto');
+const C = require('./constants');
 
 // --- Helper Functions ---
 
@@ -17,21 +18,21 @@ function logAudit(userId, username, actionType, tableName, recordId, details) {
 }
 
 /**
- * Generate a new unique Asset ID (e.g. URSB-AST-0007)
+ * Generate a new unique Asset ID (e.g. AMS-AST-0007)
  */
 function generateAssetId() {
   const query = db.prepare(`
-    SELECT id FROM assets 
-    WHERE id LIKE 'URSB-AST-%' 
-    ORDER BY CAST(SUBSTR(id, 10) AS INTEGER) DESC 
+    SELECT id FROM assets
+    WHERE id LIKE ?
+    ORDER BY CAST(SUBSTR(id, ?) AS INTEGER) DESC
     LIMIT 1
   `);
-  const row = query.get();
-  if (!row) return 'URSB-AST-0001';
-  
-  const lastNum = parseInt(row.id.replace('URSB-AST-', ''), 10);
+  const row = query.get(`${C.ASSET_ID_PREFIX}%`, C.ASSET_ID_PREFIX.length + 1);
+  if (!row) return `${C.ASSET_ID_PREFIX}${String(1).padStart(C.ASSET_ID_PAD, '0')}`;
+
+  const lastNum = parseInt(row.id.replace(C.ASSET_ID_PREFIX, ''), 10);
   const nextNum = lastNum + 1;
-  return `URSB-AST-${String(nextNum).padStart(4, '0')}`;
+  return `${C.ASSET_ID_PREFIX}${String(nextNum).padStart(C.ASSET_ID_PAD, '0')}`;
 }
 
 // --- Authentication Controllers ---
@@ -55,7 +56,8 @@ async function login(username, password) {
   
   // Generate session token (using native crypto)
   const sessionId = crypto.randomUUID();
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours expiry
+  const ttl = parseInt(process.env.SESSION_TTL_MS, 10) || C.DEFAULT_SESSION_TTL_MS;
+  const expiresAt = new Date(Date.now() + ttl).toISOString();
   
   const insertSession = db.prepare('INSERT INTO sessions (session_id, user_id, expires_at) VALUES (?, ?, ?)');
   insertSession.run(sessionId, user.id, expiresAt);
@@ -142,12 +144,9 @@ async function createUser(reqUser, { username, password, name, role, department 
     throw new Error('All fields are required');
   }
 
-  const VALID_ROLES = ['Admin', 'AssetManager', 'Employee'];
-  if (!VALID_ROLES.includes(role)) {
-    throw new Error('Invalid role. Must be Admin, AssetManager, or Employee.');
-  }
-  if (typeof password !== 'string' || password.length < 6) {
-    throw new Error('Password must be at least 6 characters long');
+  C.assertOneOf('role', role, C.ROLE_VALUES);
+  if (typeof password !== 'string' || password.length < C.PASSWORD_MIN_LENGTH) {
+    throw new Error(`Password must be at least ${C.PASSWORD_MIN_LENGTH} characters long`);
   }
   
   const existingCheck = db.prepare('SELECT id FROM users WHERE username = ?');
@@ -246,14 +245,9 @@ function registerAsset(reqUser, data) {
     throw new Error('Missing mandatory asset registration fields');
   }
 
-  const VALID_STATUSES = ['Active', 'In Storage', 'Under Maintenance', 'Disposed'];
-  if (!VALID_STATUSES.includes(status)) {
-    throw new Error('Invalid asset status. Must be Active, In Storage, Under Maintenance, or Disposed.');
-  }
-  const VALID_CONDITIONS = ['New', 'Good', 'Refurbished', 'Damaged'];
-  if (!VALID_CONDITIONS.includes(condition)) {
-    throw new Error('Invalid condition. Must be New, Good, Refurbished, or Damaged.');
-  }
+  C.assertOneOf('asset status', status, C.ASSET_STATUS_VALUES);
+  C.assertOneOf('condition', condition, C.ASSET_CONDITION_VALUES);
+  C.assertOneOf('source', source, C.ASSET_SOURCE_VALUES);
   if (isNaN(parseFloat(cost)) || parseFloat(cost) < 0) {
     throw new Error('Cost must be a non-negative number');
   }
@@ -742,11 +736,8 @@ function completeMaintenance(reqUser, maintenanceId, { completionDate, nextStatu
   if (maint.completed === 1) throw new Error('Maintenance event is already closed');
   
   // Validate the target status so a client cannot set an arbitrary/harmful value.
-  const VALID_STATUSES = ['Active', 'In Storage', 'Under Maintenance', 'Disposed'];
-  const assetStatus = nextStatus || 'In Storage';
-  if (!VALID_STATUSES.includes(assetStatus)) {
-    throw new Error('Invalid next status. Must be Active, In Storage, Under Maintenance, or Disposed.');
-  }
+  const assetStatus = nextStatus || C.ASSET_STATUS.IN_STORAGE;
+  C.assertOneOf('next status', assetStatus, C.POST_MAINTENANCE_STATUS_VALUES);
   
   db.exec('BEGIN TRANSACTION');
   try {
@@ -775,18 +766,18 @@ function completeMaintenance(reqUser, maintenanceId, { completionDate, nextStatu
       insertDisposal.run(
         maint.asset_id,
         completionDate,
-        disposalMethod || 'Scrapped',
+        disposalMethod || C.DEFAULT_DISPOSAL_METHOD,
         disposalReason || 'Too damaged beyond repair after maintenance',
         reqUser.id
       );
       // Also terminate any active assignment for the disposed asset.
       const terminateAssignments = db.prepare(`
         UPDATE assignments 
-        SET status = 'Returned', returned_date = ?, notes = notes || ' (Terminated due to asset disposal)'
+        SET status = '${C.ASSIGNMENT_STATUS.RETURNED}', returned_date = ?, notes = notes || ' (Terminated due to asset disposal)'
         WHERE asset_id = ? AND status = 'Active'
       `);
       terminateAssignments.run(completionDate, maint.asset_id);
-      logAudit(reqUser.id, reqUser.username, 'CREATE', 'disposals', maint.asset_id, `Disposed asset ${maint.asset_id} upon maintenance completion via ${disposalMethod || 'Scrapped'}`);
+      logAudit(reqUser.id, reqUser.username, 'CREATE', 'disposals', maint.asset_id, `Disposed asset ${maint.asset_id} upon maintenance completion via ${disposalMethod || C.DEFAULT_DISPOSAL_METHOD}`);
     }
     
     // 3. Log audit
@@ -809,10 +800,7 @@ function disposeAsset(reqUser, { assetId, disposalDate, method, reason }) {
     throw new Error('All fields (Asset ID, Date, Method, Reason) are required to dispose an asset');
   }
 
-  const VALID_METHODS = ['Scrapped', 'Auctioned', 'Donated', 'Destroyed'];
-  if (!VALID_METHODS.includes(method)) {
-    throw new Error('Invalid disposal method. Must be Scrapped, Auctioned, Donated, or Destroyed.');
-  }
+  C.assertOneOf('disposal method', method, C.DISPOSAL_METHODS);
   
   const asset = getAsset(assetId);
   if (asset.status === 'Disposed') {
@@ -897,8 +885,8 @@ function createRequest(reqUser, { assetName, assetType, purpose }) {
 function actionRequest(reqUser, requestId, { status, managerNotes }) {
   if (reqUser.role !== 'AssetManager') throw new Error('Unauthorized');
   
-  if (!status || !['Approved', 'Rejected'].includes(status)) {
-    throw new Error('Valid status (Approved or Rejected) is required');
+  if (!status || !C.REQUEST_ACTION_VALUES.includes(status)) {
+    throw new Error(`Valid status (${C.humanList(C.REQUEST_ACTION_VALUES)}) is required`);
   }
   
   const query = db.prepare('SELECT * FROM requests WHERE id = ?');
@@ -957,7 +945,14 @@ function updateRequestFollowUp(reqUser, requestId, { feedback, receivedStatus })
     SET requester_feedback = ?, received_status = ?
     WHERE id = ?
   `);
-  update.run(feedback || req.requester_feedback, receivedStatus || req.received_status, requestId);
+  // The column has no DB CHECK, so this is the only place received_status can
+  // be validated. Previously any arbitrary string was accepted from the client.
+  const effectiveReceivedStatus = receivedStatus || req.received_status;
+  if (effectiveReceivedStatus) {
+    C.assertOneOf('received status', effectiveReceivedStatus, C.RECEIVED_STATUS_VALUES);
+  }
+
+  update.run(feedback || req.requester_feedback, effectiveReceivedStatus, requestId);
 
   logAudit(reqUser.id, reqUser.username, 'UPDATE', 'requests', String(requestId), `Updated follow-up for request ${requestId}. Received Status: ${receivedStatus}`);
   return { success: true };
@@ -1179,7 +1174,7 @@ const path = require('path');
 
 function getLogoBuffer() {
   try {
-    const logoPath = path.join(__dirname, 'public', 'ursb-logo.jpg');
+    const logoPath = path.join(__dirname, 'public', 'logo.jpg');
     return fs.readFileSync(logoPath);
   } catch (err) {
     return null;
@@ -1211,7 +1206,7 @@ async function generateAssetRegisterPdf(reqUser, filters) {
 
   try {
     return await generateTablePdf({
-      title: 'URSB Asset Register Report',
+      title: 'Asset Register Report',
       logoBuffer,
       columns: ['Asset ID', 'Name', 'Type', 'Category', 'Serial No.', 'Condition', 'Acquisition Date', 'Cost (UGX)', 'Supplier', 'Status', 'Assignee', 'Department'],
       columnKeys: ['id', 'name', 'type', 'category', 'serial_number', 'condition', 'acquisition_date', 'cost', 'supplier', 'status', 'assigned_to_name', 'assigned_to_department'],

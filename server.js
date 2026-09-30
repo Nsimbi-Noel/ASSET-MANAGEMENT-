@@ -5,16 +5,17 @@ const path = require('path');
 const url = require('url');
 const controller = require('./controller');
 const { dbReady } = require('./db');
+const C = require('./constants');
 
 // --- Environment Configuration ---
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'database.db');
+const DB_PATH = process.env.DB_PATH || C.DEFAULT_DB_PATH;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const SSL_KEY_PATH = process.env.SSL_KEY_PATH || '';
 const SSL_CERT_PATH = process.env.SSL_CERT_PATH || '';
-const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000; // 15 min
-const RATE_LIMIT_MAX_LOGIN = parseInt(process.env.RATE_LIMIT_MAX_LOGIN, 10) || 10;
+const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || C.DEFAULT_RATE_LIMIT_WINDOW_MS; // 15 min
+const RATE_LIMIT_MAX_LOGIN = parseInt(process.env.RATE_LIMIT_MAX_LOGIN, 10) || C.DEFAULT_RATE_LIMIT_MAX;
 
 // Map controller error messages to appropriate HTTP status codes so genuine
 // client errors return 4xx instead of a misleading 500, while internal
@@ -32,7 +33,7 @@ function classifyError(error) {
   return 400;
 }
 
-const PUBLIC_DIR = path.join(__dirname, 'public');
+const PUBLIC_DIR = C.PUBLIC_DIR;
 
 // --- Simple In-Memory Rate Limiter ---
 const rateLimitStore = new Map();
@@ -91,9 +92,9 @@ function sendError(res, message, status = 400, headers = {}) {
   sendJSON(res, { error: message }, status, headers);
 }
 
-// Maximum accepted request body size (1 MB). Prevents memory exhaustion via
-// enormous payloads (body-parser style DoS protection).
-const MAX_BODY_SIZE = 1 * 1024 * 1024;
+// Maximum accepted request body size (1 MB by default). Prevents memory
+// exhaustion via enormous payloads (body-parser style DoS protection).
+const MAX_BODY_SIZE = parseInt(process.env.MAX_BODY_SIZE, 10) || C.DEFAULT_MAX_BODY_SIZE;
 
 // Helper: parse request body
 function parseBody(req) {
@@ -154,6 +155,33 @@ const server = http.createServer(async (req, res) => {
   // --- API ROUTING ---
   if (pathname.startsWith('/api/')) {
     try {
+      // Enumerated values, currency and ID conventions, served so the frontend
+      // can build its dropdowns from one source of truth instead of hardcoding
+      // parallel copies. Public by design — every value here is already
+      // rendered in the page.
+      if (pathname === '/api/config' && method === 'GET') {
+        return sendJSON(res, {
+          roles: C.ROLE_VALUES,
+          assetStatuses: C.ASSET_STATUS_VALUES,
+          postMaintenanceStatuses: C.POST_MAINTENANCE_STATUS_VALUES,
+          assetConditions: C.ASSET_CONDITION_VALUES,
+          assetSources: C.ASSET_SOURCE_VALUES,
+          assetCategories: C.ASSET_CATEGORIES,
+          disposalMethods: C.DISPOSAL_METHODS,
+          defaultDisposalMethod: C.DEFAULT_DISPOSAL_METHOD,
+          userStatuses: C.USER_STATUS_VALUES,
+          assignmentStatuses: C.ASSIGNMENT_STATUS_VALUES,
+          requestStatuses: C.REQUEST_STATUS_VALUES,
+          requestActions: C.REQUEST_ACTION_VALUES,
+          receivedStatuses: C.RECEIVED_STATUS_VALUES,
+          maintenanceProgress: C.MAINTENANCE_PROGRESS_VALUES,
+          assetIdPrefix: C.ASSET_ID_PREFIX,
+          currency: C.CURRENCY,
+          locale: C.DEFAULT_LOCALE,
+          passwordMinLength: C.PASSWORD_MIN_LENGTH
+        });
+      }
+
       // Unauthenticated routes
       if (pathname === '/api/auth/login' && method === 'POST') {
         const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
@@ -393,7 +421,10 @@ const server = http.createServer(async (req, res) => {
           assignedTo: parsedUrl.query.assignedTo
         };
         const pdfBuffer = await controller.generateAssetRegisterPdf(user, filters);
-        res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="asset_register.pdf"' });
+        res.writeHead(200, {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="${C.ASSET_ID_PREFIX.replace(/-$/, '')}_register.pdf"`
+        });
         return res.end(pdfBuffer);
       }
 
@@ -489,11 +520,11 @@ function startServer() {
         cert: fs.readFileSync(SSL_CERT_PATH)
       };
       https.createServer(sslOptions, server).listen(PORT, HOST, () => {
-        console.log(`URSB Asset Management System running at https://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT} (SSL)`);
+        console.log(`Asset Management System running at https://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT} (SSL)`);
       });
     } else {
       server.listen(PORT, HOST, () => {
-        console.log(`URSB Asset Management System running at http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+        console.log(`Asset Management System running at http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
         if (NODE_ENV === 'production' && !SSL_KEY_PATH) {
           console.warn('WARNING: Running in production without SSL. Set SSL_KEY_PATH and SSL_CERT_PATH.');
         }

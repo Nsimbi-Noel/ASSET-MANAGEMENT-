@@ -1,15 +1,31 @@
 const { db } = require('./db');
 const { hashPassword } = require('./crypto_utils');
+const C = require('./constants');
 
 function seedData() {
   return seedDataAsync();
+}
+
+// Bulk-seeded demo users share one password. It must come from the environment,
+// and must be explicitly provided in production — never fall back to a value
+// baked into source.
+function resolveSeedPassword() {
+  const fromEnv = process.env.SEED_USER_PASSWORD;
+  if (fromEnv && fromEnv.length >= C.PASSWORD_MIN_LENGTH) return fromEnv;
+  if (fromEnv) {
+    throw new Error(`SEED_USER_PASSWORD must be at least ${C.PASSWORD_MIN_LENGTH} characters long`);
+  }
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('SEED_USER_PASSWORD is required when NODE_ENV=production.');
+  }
+  return 'password123';
 }
 
 async function seedDataAsync() {
   console.log('Seeding sample data...');
 
   const departments = ['Information Technology', 'Administration', 'Finance', 'Registries', 'Legal', 'Human Resources', 'Public Relations'];
-  const roles = ['Admin', 'AssetManager', 'Employee'];
+  const roles = C.ROLE_VALUES;
   
   // 1. Create 30 Employee Users (to match the 30 sample assets)
   const employeeNames = [
@@ -49,8 +65,14 @@ async function seedDataAsync() {
     const extraLastNames = ['Bakare', 'Chan', 'Dlamini', 'Ekundayo', 'Fahim', 'Gonzalez', 'Hassan', 'Ibrahim', 'Juma', 'Kebede', 'Lule', 'Mugisha', 'Nabirye', 'Okoth', 'Patel', 'Quartey', 'Rukundo', 'Ssewankambo', 'Tumusiime', 'Umaru', 'Vanessa', 'Wanjiru', 'Yusuf', 'Zainab'];
     const roleBuckets = [];
 
-    for (let i = 0; i < 10; i++) roleBuckets.push('AssetManager');
-    for (let i = roleBuckets.length; i < targetUserCount - currentUserCount; i++) roleBuckets.push('Employee');
+    for (let i = 0; i < 10; i++) roleBuckets.push(C.ROLES.ASSET_MANAGER);
+    for (let i = roleBuckets.length; i < targetUserCount - currentUserCount; i++) roleBuckets.push(C.ROLES.EMPLOYEE);
+
+    // Bulk-seeded demo accounts previously all shared a password committed to
+    // source, so one leaked hash exposed every account. The password is now
+    // supplied by the environment and mandatory in production.
+    const seedPassword = resolveSeedPassword();
+    const seedHash = await hashPassword(seedPassword);
 
     const totalToCreate = targetUserCount - currentUserCount;
     for (let i = 0; i < totalToCreate; i++) {
@@ -58,15 +80,16 @@ async function seedDataAsync() {
       const first = extraFirstNames[i % extraFirstNames.length];
       const last = extraLastNames[(i + 3) % extraLastNames.length];
       const name = `${first} ${last}`;
-      const role = roleBuckets[i] || 'Employee';
+      const role = roleBuckets[i] || C.ROLES.EMPLOYEE;
       const dept = departments[i % departments.length];
       try {
-        insertUser.run(username, await hashPassword('password123'), name, role, dept);
+        insertUser.run(username, seedHash, name, role, dept);
       } catch (e) {
         // Skip if username exists
       }
     }
     console.log(`Seeded ${targetUserCount - currentUserCount} additional users.`);
+    console.log('NOTE: every seeded demo account shares one password. Rotate them before any real use.');
   }
 
   // 2. Create Sample Assets
@@ -122,9 +145,12 @@ async function seedDataAsync() {
     ];
 
     const suppliers = ['Dell Uganda', 'HP East Africa', 'Simba Telecom', 'Office World', 'Airtel Business', 'Samsung East Africa'];
-    const sources = ['Procurement', 'Donation', 'Lease'];
-    const conditions = ['New', 'Good', 'Refurbished'];
-    const statuses = ['Active', 'In Storage', 'Under Maintenance', 'Disposed'];
+    // Drawn from the shared enums so seeded data can never violate a CHECK
+    // constraint. All values are eligible, including the ones the UI previously
+    // omitted (Lease / Other sources, Damaged condition).
+    const sources = C.ASSET_SOURCE_VALUES;
+    const conditions = C.ASSET_CONDITION_VALUES;
+    const statuses = C.ASSET_STATUS_VALUES;
 
     const currentYear = new Date().getFullYear();
     const assetTotalToAdd = targetAssetCount - existingAssetCount;
@@ -138,7 +164,7 @@ async function seedDataAsync() {
       for (let j = 0; j < countForMonth; j++) {
         overallIndex += 1;
         const assetInfo = assetTypes[(overallIndex - 1) % assetTypes.length];
-        const id = `URSB-AST-${String(overallIndex).padStart(4, '0')}`;
+        const id = `AMS-AST-${String(overallIndex).padStart(4, '0')}`;
         const serial = `SN-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
         const condition = conditions[overallIndex % conditions.length];
         const day = 5 + ((overallIndex - 1) % 20);

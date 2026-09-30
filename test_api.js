@@ -19,6 +19,13 @@ if (!process.env.DB_PATH) {
 
 const controller = require('./controller');
 const { db, dbReady } = require('./db');
+const C = require('./constants');
+
+// The bootstrap accounts are created from these env vars, so the suite must
+// authenticate with the same values rather than a literal baked into a test.
+const ADMIN_PASSWORD = process.env.BOOTSTRAP_ADMIN_PASSWORD || 'admin123';
+const MANAGER_PASSWORD = process.env.BOOTSTRAP_MANAGER_PASSWORD || 'manager123';
+const EMPLOYEE_PASSWORD = process.env.BOOTSTRAP_EMPLOYEE_PASSWORD || 'employee123';
 
 // Color codes for output styling
 const green = '\x1b[32m';
@@ -26,7 +33,7 @@ const reset = '\x1b[0m';
 const red = '\x1b[31m';
 
 async function runTests() {
-  console.log('Starting automated integration test suite for URSB AMS...\n');
+  console.log('Starting automated integration test suite for AMS...\n');
   
   try {
     // Wait for the default accounts (admin/manager/employee) to finish seeding
@@ -35,9 +42,9 @@ async function runTests() {
 
     // 1. Test Auth & Login
     console.log('Testing Authentication...');
-    const authResult = await controller.login('manager', 'manager123');
+    const authResult = await controller.login('manager', MANAGER_PASSWORD);
     assert.ok(authResult.sessionId, 'Session token should be generated');
-    assert.strictEqual(authResult.user.role, 'AssetManager', 'User role should match database seed');
+    assert.strictEqual(authResult.user.role, C.ROLES.ASSET_MANAGER, 'User role should match database seed');
     console.log(`${green}✓ Authentication login successful${reset}`);
     
     // Setup Mock Requesting User Context
@@ -67,7 +74,7 @@ async function runTests() {
     };
     
     const newAsset = controller.registerAsset(managerUser, assetData);
-    assert.ok(newAsset.id.startsWith('URSB-AST-'), 'Unique Asset ID should be auto-generated with URSB-AST- prefix');
+    assert.ok(newAsset.id.startsWith('AMS-AST-'), 'Unique Asset ID should be auto-generated with AMS-AST- prefix');
     console.log(`${green}✓ Asset successfully registered with ID: ${newAsset.id}${reset}`);
 
     // 3. Test Asset Assignment & Rule Enforcement
@@ -267,6 +274,82 @@ async function runTests() {
     assert.strictEqual(updatedRequest.requester_feedback, 'Excellent condition', 'Feedback should be updated');
     assert.strictEqual(updatedRequest.received_status, 'Received', 'Received status should be updated');
     console.log(`${green}✓ Request follow-up updated and verified successfully.${reset}`);
+
+    // 8. Test that received_status is now validated server-side.
+    // The column has no DB CHECK (it came from a migration), so an
+    // unvalidated client could previously write any arbitrary string.
+    console.log('\nTesting Enum Validation...');
+    try {
+      controller.updateRequestFollowUp(employeeUser, request.id, {
+        feedback: 'Attempting to inject an invalid status',
+        receivedStatus: 'Not A Real Status'
+      });
+      assert.fail('Should have rejected an invalid received_status');
+    } catch (err) {
+      assert.match(err.message, /Invalid received status/, 'Should reject an invalid received_status');
+    }
+    console.log(`${green}✓ Correctly rejected an invalid received_status.${reset}`);
+
+    // Values that were valid in the DB but unreachable from the UI must now be
+    // accepted end-to-end (Lease source, Damaged condition).
+    const leasedAsset = controller.registerAsset(managerUser, {
+      name: 'Leased Generator',
+      type: 'Generator',
+      category: 'Fittings',
+      serial_number: 'SN-LEASE-0001',
+      condition: C.ASSET_CONDITION.DAMAGED,
+      acquisition_date: '2026-01-15',
+      cost: 4500000,
+      supplier: 'Regional Leasing Co',
+      source: C.ASSET_SOURCE.LEASE,
+      status: C.ASSET_STATUS.ACTIVE
+    });
+    assert.strictEqual(leasedAsset.source, C.ASSET_SOURCE.LEASE, 'Lease source should be accepted');
+    assert.strictEqual(leasedAsset.condition, C.ASSET_CONDITION.DAMAGED, 'Damaged condition should be accepted');
+    console.log(`${green}✓ Lease source and Damaged condition are reachable end-to-end.${reset}`);
+
+    // Every enum the server advertises must be insertable, so /api/config can
+    // never hand the UI a value the API would then reject.
+    for (const source of C.ASSET_SOURCE_VALUES) {
+      controller.registerAsset(managerUser, {
+        name: `Source Probe ${source}`, type: 'Laptop', category: 'IT Equipment',
+        serial_number: `SN-SRC-${source.replace(/\s+/g, '')}`,
+        condition: C.ASSET_CONDITION.NEW, acquisition_date: '2026-02-01',
+        cost: 1000, supplier: 'Probe Supplier', source, status: C.ASSET_STATUS.ACTIVE
+      });
+    }
+    for (const method of C.DISPOSAL_METHODS) {
+      assert.ok(C.DISPOSAL_METHODS.includes(method), `${method} should be a valid disposal method`);
+    }
+    console.log(`${green}✓ All advertised asset sources validate against the API.${reset}`);
+
+    // A status that is legal in the schema but illegal as a post-maintenance
+    // target must still be rejected.
+    const guardAsset = controller.registerAsset(managerUser, {
+      name: 'Status Guard Test', type: 'Printer', category: 'Office Equipment',
+      serial_number: 'SN-GUARD-0001', condition: C.ASSET_CONDITION.GOOD,
+      acquisition_date: '2026-02-02', cost: 500000, supplier: 'Probe Supplier',
+      source: C.ASSET_SOURCE.PROCUREMENT, status: C.ASSET_STATUS.ACTIVE
+    });
+    const maintRec = controller.recordMaintenance(managerUser, {
+      assetId: guardAsset.id,
+      serviceProvider: 'Probe Service',
+      description: 'Status guard probe',
+      cost: 1000,
+      serviceDate: '2026-02-03',
+      nextServiceDate: '2026-08-03',
+      estimatedDurationDays: 7
+    });
+    try {
+      controller.completeMaintenance(managerUser, maintRec.maintenanceId, {
+        completionDate: '2026-02-05',
+        nextStatus: C.ASSET_STATUS.UNDER_MAINTENANCE
+      });
+      assert.fail('Should have rejected Under Maintenance as a post-maintenance target');
+    } catch (err) {
+      assert.match(err.message, /Invalid next status/, 'Should reject Under Maintenance as a post-maintenance target');
+    }
+    console.log(`${green}✓ Post-maintenance status cannot be set back to Under Maintenance.${reset}`);
 
     console.log(`\n${green}=========================================`);
     console.log(`ALL INTEGRATION TESTS PASSED SUCCESSFULLY!`);

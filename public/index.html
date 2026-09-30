@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>URSB Asset Management System</title>
+  <title>Asset Management System</title>
   <link rel="stylesheet" href="styles.css">
-  <link rel="icon" type="image/jpeg" href="ursb-logo.jpg">
+  <link rel="icon" type="image/jpeg" href="logo.jpg">
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,23 +18,25 @@
 
   <!-- ================= AUTH CONTAINER ================= -->
   <div id="auth-container" class="auth-wrapper">
-    <!-- Background image slideshow (self-contained CSS gradients so the login
-         page works offline/on-intranet without fetching third-party images) -->
+    <!-- Background image slideshow. Images are bundled locally in public/slides/
+         so the login page works offline / on-intranet. The first slide is applied
+         as an inline style so the page never flashes an empty background; the rest
+         are swapped in progressively by initLoginSlideshow(). Kept to 4 slides so
+         first paint isn't competing with ~1.7MB of images. -->
     <div class="login-slideshow" id="login-slideshow">
-      <div class="slide active" style="background-image: linear-gradient(135deg, #0b2b4f 0%, #1b5fa8 100%);"></div>
-      <div class="slide" style="background-image: linear-gradient(135deg, #103a30 0%, #2f8f70 100%);"></div>
-      <div class="slide" style="background-image: linear-gradient(135deg, #3a1f5f 0%, #7a4bc0 100%);"></div>
-      <div class="slide" style="background-image: linear-gradient(135deg, #5f2a10 0%, #c07a2f 100%);"></div>
-      <div class="slide" style="background-image: linear-gradient(135deg, #123f52 0%, #2f9dd1 100%);"></div>
+      <div class="slide active" data-image="slides/01-circuit.jpg" style="background-image: url('slides/01-circuit.jpg');"></div>
+      <div class="slide" data-image="slides/02-server-room.jpg"></div>
+      <div class="slide" data-image="slides/03-engineer.jpg"></div>
+      <div class="slide" data-image="slides/05-storage.jpg"></div>
     </div>
     <div class="auth-overlay"></div>
     <div class="auth-card">
       <div class="auth-header">
-        <div class="ursb-logo-placeholder">
-          <img src="ursb-logo.jpg" alt="URSB Logo">
+        <div class="logo-placeholder">
+          <img src="logo.jpg" alt="Asset Management Logo">
         </div>
         <h2>Asset Management System</h2>
-        <p class="auth-lead">Sign in to manage and track institutional assets</p>
+        <p class="auth-lead">Sign in to manage and track your assets</p>
       </div>
       
       <form id="login-form">
@@ -54,7 +56,8 @@
       </form>
       
       <div class="auth-footer">
-        <p>© 2026 Uganda Registration Services Bureau. All rights reserved.</p>
+        <!-- Year injected at runtime so it never goes stale. -->
+        <p>&copy; <span data-current-year>2026</span> Asset Management System. All rights reserved.</p>
       </div>
     </div>
   </div>
@@ -67,10 +70,10 @@
       <div class="sidebar-brand">
         <div class="brand-logo">
           <div class="brand-logo-mark">
-            <img src="ursb-logo.jpg" alt="URSB Logo">
+            <img src="logo.jpg" alt="Asset Management Logo">
           </div>
           <div class="brand-logo-text">
-            <span class="logo-main">URSB</span>
+            <span class="logo-main">AMS</span>
             <span class="logo-sub">Asset Manager</span>
           </div>
         </div>
@@ -258,15 +261,9 @@
           </div>
           <div class="form-group">
             <label for="reg-category">Category*</label>
-            <select id="reg-category" required>
-              <option value="">Select Category</option>
-              <option value="IT Equipment">IT Equipment</option>
-              <option value="IT Infrastructure">IT Infrastructure</option>
-              <option value="Office Equipment">Office Equipment</option>
-              <option value="Furniture">Furniture</option>
-              <option value="Fittings">Fittings</option>
-              <option value="Other">Other</option>
-            </select>
+            <!-- Options are populated from /api/config (see APP_ENUMS in app.js)
+                 so this list has a single source of truth. -->
+            <select id="reg-category" data-enum="assetCategories" data-placeholder="Select Category" required></select>
           </div>
           <div class="form-group">
             <label for="reg-serial">Serial Number*</label>
@@ -274,20 +271,15 @@
           </div>
           <div class="form-group">
             <label for="reg-condition">Condition*</label>
-            <select id="reg-condition" required>
-              <option value="New">New</option>
-              <option value="Good">Good</option>
-              <option value="Refurbished">Refurbished</option>
-              <option value="Damaged">Damaged</option>
-            </select>
+            <select id="reg-condition" data-enum="assetConditions" required></select>
           </div>
           <div class="form-group">
             <label for="reg-acq-date">Acquisition Date*</label>
             <input type="date" id="reg-acq-date" required>
           </div>
           <div class="form-group">
-            <label for="reg-cost">Cost (UGX)*</label>
-            <input type="number" id="reg-cost" required min="0" placeholder="Acquisition cost in UGX">
+            <label for="reg-cost">Cost (<span data-currency>UGX</span>)*</label>
+            <input type="number" id="reg-cost" required min="0"           placeholder="Acquisition cost (see currency field)">
           </div>
           <div class="form-group">
             <label for="reg-supplier">Supplier*</label>
@@ -295,19 +287,12 @@
           </div>
           <div class="form-group">
             <label for="reg-source">Source*</label>
-            <select id="reg-source" required>
-              <option value="Procurement">Procurement</option>
-              <option value="Donation">Donation</option>
-              <option value="Other">Other</option>
-            </select>
+            <select id="reg-source" data-enum="assetSources" required></select>
           </div>
           <div class="form-group">
             <label for="reg-status">Initial Status*</label>
-            <select id="reg-status" required>
-              <option value="Active">Active</option>
-              <option value="In Storage">In Storage</option>
-              <option value="Under Maintenance">Under Maintenance</option>
-            </select>
+            <!-- Disposed is excluded: a new asset cannot be registered already retired. -->
+            <select id="reg-status" data-enum="registrableAssetStatuses" required></select>
           </div>
         </div>
       </div>
@@ -338,14 +323,7 @@
           </div>
           <div class="form-group">
             <label for="edit-category">Category*</label>
-            <select id="edit-category" required>
-              <option value="IT Equipment">IT Equipment</option>
-              <option value="IT Infrastructure">IT Infrastructure</option>
-              <option value="Office Equipment">Office Equipment</option>
-              <option value="Furniture">Furniture</option>
-              <option value="Fittings">Fittings</option>
-              <option value="Other">Other</option>
-            </select>
+            <select id="edit-category" data-enum="assetCategories" required></select>
           </div>
           <div class="form-group">
             <label for="edit-serial">Serial Number*</label>
@@ -353,19 +331,14 @@
           </div>
           <div class="form-group">
             <label for="edit-condition">Condition*</label>
-            <select id="edit-condition" required>
-              <option value="New">New</option>
-              <option value="Good">Good</option>
-              <option value="Refurbished">Refurbished</option>
-              <option value="Damaged">Damaged</option>
-            </select>
+            <select id="edit-condition" data-enum="assetConditions" required></select>
           </div>
           <div class="form-group">
             <label for="edit-acq-date">Acquisition Date*</label>
             <input type="date" id="edit-acq-date" required>
           </div>
           <div class="form-group">
-            <label for="edit-cost">Cost (UGX)*</label>
+            <label for="edit-cost">Cost (<span data-currency>UGX</span>)*</label>
             <input type="number" id="edit-cost" required min="0">
           </div>
           <div class="form-group">
@@ -374,19 +347,11 @@
           </div>
           <div class="form-group">
             <label for="edit-source">Source*</label>
-            <select id="edit-source" required>
-              <option value="Procurement">Procurement</option>
-              <option value="Donation">Donation</option>
-              <option value="Other">Other</option>
-            </select>
+            <select id="edit-source" data-enum="assetSources" required></select>
           </div>
           <div class="form-group">
             <label for="edit-status">Status*</label>
-            <select id="edit-status" required>
-              <option value="Active">Active</option>
-              <option value="In Storage">In Storage</option>
-              <option value="Under Maintenance">Under Maintenance</option>
-            </select>
+            <select id="edit-status" data-enum="registrableAssetStatuses" required></select>
           </div>
         </div>
       </div>
@@ -545,18 +510,18 @@
       <button class="modal-close" onclick="closeModal('modal-confirm-receipt')">&times;</button>
     </div>
     <div class="modal-body">
-      <div style="background: #f0f9ff; border-left: 4px solid #0a448e; padding: 1rem; margin-bottom: 1rem; border-radius: 4px;">
-        <p style="margin: 0; color: #1a202c;"><strong>Asset Details:</strong></p>
+      <div class="callout callout-info">
+        <p style="margin: 0;"><strong>Asset Details:</strong></p>
         <div style="margin-top: 0.5rem;">
-          <p style="margin: 0.25rem 0;"><strong>Asset ID:</strong> <span id="receipt-asset-id"></span></p>
-          <p style="margin: 0.25rem 0;"><strong>Asset Name:</strong> <span id="receipt-asset-name"></span></p>
-          <p style="margin: 0.25rem 0;"><strong>Type:</strong> <span id="receipt-asset-type"></span></p>
-          <p style="margin: 0.25rem 0;"><strong>Serial Number:</strong> <span id="receipt-asset-serial"></span></p>
+          <p><strong>Asset ID:</strong> <span id="receipt-asset-id"></span></p>
+          <p><strong>Asset Name:</strong> <span id="receipt-asset-name"></span></p>
+          <p><strong>Type:</strong> <span id="receipt-asset-type"></span></p>
+          <p><strong>Serial Number:</strong> <span id="receipt-asset-serial"></span></p>
         </div>
       </div>
-      <p style="color: #4a5568; margin: 1rem 0;">By confirming receipt, you certify that you have physically received this asset in good condition and accept responsibility for its safekeeping.</p>
-      <div style="background: #fffaf0; border-left: 4px solid #ed8936; padding: 0.75rem; border-radius: 4px;">
-        <p style="margin: 0; color: #7c2d12; font-size: 0.9rem;"><strong>Important:</strong> Please verify the asset condition before confirming receipt.</p>
+      <p class="callout-muted">By confirming receipt, you certify that you have physically received this asset in good condition and accept responsibility for its safekeeping.</p>
+      <div class="callout callout-warn">
+        <p style="margin: 0;"><strong>Important:</strong> Please verify the asset condition before confirming receipt.</p>
       </div>
     </div>
     <div class="modal-footer">
@@ -572,11 +537,11 @@
       <button class="modal-close" onclick="closeModal('modal-complete-maintenance')">&times;</button>
     </div>
     <div class="modal-body">
-      <div style="background: #f0f9ff; border-left: 4px solid #0a448e; padding: 1rem; margin-bottom: 1.5rem; border-radius: 4px;">
-        <p style="margin: 0; color: #1a202c;"><strong>Asset Information:</strong></p>
+      <div class="callout callout-info">
+        <p style="margin: 0;"><strong>Asset Information:</strong></p>
         <div style="margin-top: 0.5rem;">
-          <p style="margin: 0.25rem 0;"><strong>Asset ID:</strong> <span id="complete-maint-asset-id"></span></p>
-          <p style="margin: 0.25rem 0;"><strong>Asset Name:</strong> <span id="complete-maint-asset-name"></span></p>
+          <p><strong>Asset ID:</strong> <span id="complete-maint-asset-id"></span></p>
+          <p><strong>Asset Name:</strong> <span id="complete-maint-asset-name"></span></p>
         </div>
         <p id="complete-maint-timing-note" style="margin: 0.5rem 0 0 0;"></p>
       </div>
@@ -586,14 +551,14 @@
         <input type="date" id="complete-maint-date" required>
       </div>
       
-      <div style="background: #fffaf0; border-left: 4px solid #ed8936; padding: 1rem; margin-bottom: 1.5rem; border-radius: 4px;">
-        <p style="margin: 0 0 1rem 0; color: #7c2d12; font-weight: 600;">What should happen to this asset after maintenance?</p>
+      <div class="callout callout-warn">
+        <p style="margin: 0 0 1rem 0; font-weight: 600;"><strong>What should happen to this asset after maintenance?</strong></p>
         
         <div style="display: flex; gap: 1rem;">
           <label style="flex: 1; cursor: pointer;">
             <input type="radio" name="post-maintenance-action" value="storage" checked style="margin-right: 0.5rem;">
             <span style="font-weight: 500;">Send to Storage</span>
-            <p style="margin: 0.25rem 0 0 1.5rem; font-size: 0.85rem; color: #5a6c7d;">Asset will be marked as 'In Storage'</p>
+            <p style="margin: 0.25rem 0 0 1.5rem; font-size: 0.85rem; color: var(--text-secondary);">Asset will be marked as 'In Storage'</p>
           </label>
         </div>
         
@@ -601,15 +566,15 @@
           <label style="flex: 1; cursor: pointer;">
             <input type="radio" name="post-maintenance-action" value="assign" style="margin-right: 0.5rem;">
             <span style="font-weight: 500;">Assign to Someone</span>
-            <p style="margin: 0.25rem 0 0 1.5rem; font-size: 0.85rem; color: #5a6c7d;">Asset will be assigned to a user</p>
+            <p style="margin: 0.25rem 0 0 1.5rem; font-size: 0.85rem; color: var(--text-secondary);">Asset will be assigned to a user</p>
           </label>
         </div>
         
         <div style="display: flex; gap: 1rem; margin-top: 1rem;">
           <label style="flex: 1; cursor: pointer;">
             <input type="radio" name="post-maintenance-action" value="dispose" style="margin-right: 0.5rem;">
-            <span style="font-weight: 500; color: #c53030;">Dispose Asset</span>
-            <p style="margin: 0.25rem 0 0 1.5rem; font-size: 0.85rem; color: #5a6c7d;">Asset is too damaged and should be retired</p>
+            <span style="font-weight: 500; color: var(--color-disposed);">Dispose Asset</span>
+            <p style="margin: 0.25rem 0 0 1.5rem; font-size: 0.85rem; color: var(--text-secondary);">Asset is too damaged and should be retired</p>
           </label>
         </div>
       </div>
@@ -703,12 +668,7 @@
         </div>
         <div class="form-group">
           <label for="disp-method">Disposal Method*</label>
-          <select id="disp-method" required>
-            <option value="Scrapped">Scrapped</option>
-            <option value="Auctioned">Auctioned</option>
-            <option value="Donated">Donated</option>
-            <option value="Destroyed">Destroyed</option>
-          </select>
+          <select id="disp-method" data-enum="disposalMethods" required></select>
         </div>
         <div class="form-group">
           <label for="disp-reason">Disposal Reason (Justification)*</label>
@@ -732,11 +692,8 @@
       <div class="modal-body">
         <div class="form-group">
           <label for="followup-received-status">Have you received this asset?*</label>
-          <select id="followup-received-status" required>
-            <option value="Pending">Still Pending</option>
-            <option value="Received">Yes, Received</option>
-            <option value="Not Received">No, Not Received</option>
-          </select>
+          <!-- Values come from /api/config; labels are customised per option. -->
+          <select id="followup-received-status" data-enum="receivedStatuses" data-labels="1" required></select>
         </div>
         <div class="form-group">
           <label for="followup-feedback">Feedback / Inquiry*</label>
@@ -807,11 +764,7 @@
         </div>
         <div class="form-group">
           <label for="usr-role">System Role*</label>
-          <select id="usr-role" required>
-            <option value="Employee">Employee (Asset Requesting)</option>
-            <option value="AssetManager">Asset Manager (Full Inventory Operations)</option>
-            <option value="Admin">System Administrator</option>
-          </select>
+          <select id="usr-role" data-enum="roles" data-role-labels="1" required></select>
         </div>
         <div class="form-group">
           <label for="usr-department">Department*</label>
@@ -819,10 +772,7 @@
         </div>
         <div class="form-group" id="usr-status-group" style="display: none;">
           <label for="usr-status">Account Status*</label>
-          <select id="usr-status">
-            <option value="Active">Active</option>
-            <option value="Inactive">Inactive</option>
-          </select>
+          <select id="usr-status" data-enum="userStatuses"></select>
         </div>
       </div>
       <div class="modal-footer">

@@ -1,6 +1,6 @@
-# URSB Asset Management System
+# Asset Management System
 
-A full-featured asset lifecycle management system for the Uganda Registration Services Bureau. Built with Node.js + SQLite — only runtime dependency is `pdf-lib` for PDF export.
+A full-featured asset lifecycle management system for personal use. Built with Node.js + SQLite — only runtime dependency is `pdf-lib` for PDF export.
 
 ## Features
 
@@ -39,7 +39,7 @@ A full-featured asset lifecycle management system for the Uganda Registration Se
 
 ## Getting Started: Step-by-Step Guide
 
-Follow these instructions to set up and run the URSB Asset Management System locally.
+Follow these instructions to set up and run the Asset Management System locally.
 
 ### 1. Clone the Repository
 
@@ -71,12 +71,36 @@ cp .env.example .env
 |----------|---------|-------------|
 | `PORT` | `3000` | HTTP server port |
 | `HOST` | `0.0.0.0` | Bind address |
-| `NODE_ENV` | `development` | Environment mode |
+| `NODE_ENV` | `development` | Environment mode. **`production` requires all bootstrap and seed passwords below.** |
 | `DB_PATH` | `./data/database.db` | SQLite database path |
+| `BOOTSTRAP_ADMIN_PASSWORD` | dev-only fallback | Password for the `admin` account created on an empty database. **Required in production.** |
+| `BOOTSTRAP_MANAGER_PASSWORD` | dev-only fallback | Password for the `manager` account. **Required in production.** |
+| `BOOTSTRAP_EMPLOYEE_PASSWORD` | dev-only fallback | Password for the `employee` account. **Required in production.** |
+| `SEED_USER_PASSWORD` | dev-only fallback | Password shared by every account created by `node seed.js`. **Required in production.** |
+| `SESSION_TTL_MS` | `86400000` (24h) | Session lifetime |
+| `MAX_BODY_SIZE` | `1048576` (1 MB) | Maximum accepted request body |
 | `SSL_KEY_PATH` | — | Path to TLS key (enables HTTPS) |
 | `SSL_CERT_PATH` | — | Path to TLS cert (enables HTTPS) |
 | `RATE_LIMIT_MAX_LOGIN` | `10` | Max login attempts per 15 min |
 | `RATE_LIMIT_WINDOW_MS` | `900000` | Rate limit window in ms |
+
+> **No password is stored in source.** The three bootstrap accounts are created
+> once, when the database is empty. Outside production, omitting these variables
+> falls back to development-only defaults and logs a warning. With
+> `NODE_ENV=production`, startup **aborts** if any of them is missing or shorter
+> than 6 characters — a fresh deploy can never be reachable with a well-known
+> credential. Seeded demo users all share `SEED_USER_PASSWORD`; rotate or delete
+> them before real use.
+
+### 3a. Where enumerated values live
+
+Roles, asset statuses, conditions, sources, disposal methods, request/receipt
+states, the currency code, the asset ID prefix and the password minimum are all
+declared once in **`constants.js`**. That file feeds the SQLite `CHECK`
+constraints in `db.js`, the validation in `controller.js`, the sample data in
+`seed.js`, and the `GET /api/config` endpoint the browser uses to build its
+dropdowns. To add a value (e.g. a new `source`), edit `constants.js` only — the
+schema, API validation and UI all follow.
 
 ### 4. Initialize and Seed the Database
 
@@ -123,8 +147,8 @@ Use the following default credentials to log in and explore the system:
 To run the application using Docker:
 
 ```bash
-docker build -t ursb-ams .
-docker run -p 3000:3000 -v $(pwd)/data:/app/data ursb-ams
+docker build -t ams .
+docker run -p 3000:3000 -v $(pwd)/data:/app/data ams
 ```
 
 ## API Endpoints
@@ -154,6 +178,7 @@ All routes under `/api/`:
 | GET | `/api/reports/register` | Manager/Admin | Asset register (filtered) |
 | GET | `/api/reports/history/:id` | Yes | Asset lifecycle history |
 | GET | `/api/reports/audits` | Manager+ | Audit logs |
+| GET | `/api/config` | No | Shared enums, currency, ID prefix and password minimum (public — all values are already rendered in the page) |
 
 ## Changelog
 

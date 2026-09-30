@@ -105,6 +105,8 @@ temp/
 *.db
 *.sqlite
 *.sqlite3
+*.db-wal
+*.db-shm
 
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/

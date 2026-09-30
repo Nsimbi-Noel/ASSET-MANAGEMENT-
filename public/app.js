@@ -1,4 +1,4 @@
-// ================= URSB AMS CLIENT CORE =================
+// ================= AMS CLIENT CORE =================
 
 // Global State
 let currentUser = null;
@@ -27,12 +27,149 @@ let pendingViewFilter = null;
 let myAssetsRawData = { assignments: [], requests: [] };
 let myAssetsFilterType = 'all';
 
+// ================= SHARED CONFIG (from /api/config) =================
+// The server is the single source of truth for every enumerated value. Until
+// this loads, APP_CONFIG stays null and UI_ENUM_VALUES returns the built-in
+// list so nothing renders as an empty dropdown. Every list here mirrors
+// constants.js; if you change one, change both.
+let APP_CONFIG = null;
+
+const UI_FALLBACK_ENUMS = {
+  roles: ['Employee', 'AssetManager', 'Admin'],
+  assetStatuses: ['Active', 'In Storage', 'Under Maintenance', 'Disposed'],
+  postMaintenanceStatuses: ['Active', 'In Storage', 'Disposed'],
+  assetConditions: ['New', 'Good', 'Refurbished', 'Damaged'],
+  assetSources: ['Procurement', 'Donation', 'Lease', 'Other'],
+  assetCategories: ['IT Equipment', 'IT Infrastructure', 'Office Equipment', 'Furniture', 'Fittings', 'Vehicles', 'Other'],
+  disposalMethods: ['Scrapped', 'Auctioned', 'Donated', 'Destroyed'],
+  userStatuses: ['Active', 'Inactive'],
+  receivedStatuses: ['Pending', 'Received', 'Not Received'],
+  maintenanceProgress: ['Ready for Review', 'Due Today', 'Overdue', 'Completed'],
+  requestActions: ['Approved', 'Rejected'],
+  currency: 'UGX',
+  locale: 'en-UG',
+  passwordMinLength: 6
+};
+
+// A newly registered or edited asset cannot already be Disposed.
+const UI_REGISTRABLE_STATUSES = ['Active', 'In Storage', 'Under Maintenance'];
+
+// Human labels that are intentionally richer than the stored value.
+const UI_ENUM_LABELS = {
+  receivedStatuses: { Pending: 'Still Pending', Received: 'Yes, Received', 'Not Received': 'No, Not Received' },
+  roles: { Employee: 'Employee (Asset Requesting)', AssetManager: 'Asset Manager (Full Inventory Operations)', Admin: 'System Administrator' }
+};
+
+function UI_ENUM_VALUES(key) {
+  const fromServer = APP_CONFIG && APP_CONFIG[key];
+  if (Array.isArray(fromServer) && fromServer.length) return fromServer;
+  return UI_FALLBACK_ENUMS[key] || [];
+}
+
+function UI_ENUM_LABEL(key, value) {
+  const map = UI_ENUM_LABELS[key];
+  return (map && map[value]) || value;
+}
+
+function UI_CURRENCY() {
+  return (APP_CONFIG && APP_CONFIG.currency) || UI_FALLBACK_ENUMS.currency;
+}
+
+function UI_LOCALE() {
+  return (APP_CONFIG && APP_CONFIG.locale) || UI_FALLBACK_ENUMS.locale;
+}
+
+function UI_PASSWORD_MIN() {
+  return (APP_CONFIG && APP_CONFIG.passwordMinLength) || UI_FALLBACK_ENUMS.passwordMinLength;
+}
+
+/**
+ * Fetch /api/config once and hydrate every [data-enum] select, plus any
+ * [data-currency] label. Falls back silently to the built-in lists so a
+ * config failure degrades to the previous hardcoded behaviour rather than
+ * an unusable form.
+ */
+async function loadAppConfig() {
+  try {
+    const res = await fetch('/api/config');
+    if (res.ok) APP_CONFIG = await res.json();
+  } catch (e) {
+    // Keep APP_CONFIG null; UI_ENUM_VALUES falls back.
+  }
+
+  const enums = {
+    registrableAssetStatuses: UI_REGISTRABLE_STATUSES
+  };
+
+  document.querySelectorAll('select[data-enum]').forEach((select) => {
+    const key = select.dataset.enum;
+    const values = enums[key] || UI_ENUM_VALUES(key);
+    if (!values.length) return;
+
+    const placeholder = select.dataset.placeholder;
+    const wantLabels = select.dataset.labels === '1' || select.dataset.roleLabels === '1';
+    const previous = select.value;
+
+    select.innerHTML = '';
+    if (placeholder) {
+      const ph = document.createElement('option');
+      ph.value = '';
+      ph.textContent = placeholder;
+      select.appendChild(ph);
+    }
+    values.forEach((v) => {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = wantLabels ? UI_ENUM_LABEL(key, v) : v;
+      select.appendChild(opt);
+    });
+
+    // Preserve the operator's selection across a re-hydration.
+    if (previous && values.includes(previous)) select.value = previous;
+  });
+
+  const currency = UI_CURRENCY();
+  document.querySelectorAll('[data-currency]').forEach((el) => { el.textContent = currency; });
+
+  const year = String(new Date().getFullYear());
+  document.querySelectorAll('[data-current-year]').forEach((el) => { el.textContent = year; });
+}
+
 // ================= COLOR / THEME HELPERS =================
 function cssVar(name, fallback) {
   try {
     const v = getComputedStyle(document.body).getPropertyValue(name).trim();
     return v || fallback;
   } catch (e) { return fallback; }
+}
+
+// Chart fallbacks. These mirror the LIGHT theme tokens in styles.css and are
+// only reached if a CSS variable is genuinely absent from the document (e.g.
+// a stylesheet failed to load), in which case a readable chart beats no chart.
+// They are not theme-dependent on purpose: reading them from a themed
+// variable is what cssVar() already does.
+const UI_CHART_FALLBACK = {
+  brandBlue: 'hsl(215, 95%, 28%)',
+  brandBlueDark: 'hsl(215, 100%, 18%)',
+  brandBlueLight: 'hsl(215, 80%, 40%)',
+  cardBg: '#ffffff',
+  textPrimary: '#1a202c',
+  textSecondary: '#4a5568',
+  border: '#e2e8f0',
+  labelBg: 'hsl(215, 25%, 98%)',
+  gridLine: '#cbd5e0',
+  axisText: '#718096',
+  trackBg: '#f0f4f8',
+  mutedText: '#a0aec0'
+};
+
+/** Format a monetary amount with the configured currency and locale. */
+function formatMoney(value, { decimals = 0 } = {}) {
+  const num = Number(value);
+  const formatted = Number.isFinite(num)
+    ? num.toLocaleString(UI_LOCALE(), { maximumFractionDigits: decimals, minimumFractionDigits: 0 })
+    : '0';
+  return `${UI_CURRENCY()} ${formatted}`;
 }
 
 function hslaFrom(colorStr, alpha) {
@@ -120,7 +257,10 @@ function blendColors(a, b, t) {
 }
 
 // Document Ready
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  // Resolve shared enums before anything renders, so every dropdown and
+  // currency label is populated from /api/config on first paint.
+  await loadAppConfig();
   initApp();
 });
 
@@ -772,7 +912,7 @@ function renderTrendChart(canvasId, trend, overrides = null) {
 
   if (!dataPoints || dataPoints.length === 0) {
     ctx.font = '14px Outfit';
-    ctx.fillStyle = getCol('--text-secondary', '#718096');
+    ctx.fillStyle = getCol('--text-secondary', UI_CHART_FALLBACK.axisText);
     ctx.fillText('No acquisition data to display', 40, 100);
     return;
   }
@@ -786,8 +926,8 @@ function renderTrendChart(canvasId, trend, overrides = null) {
   const minVal = 0;
 
   // Draw enhanced background with subtle gradient (theme-aware)
-  const bgTop = hslaFrom(getCol('--bg-color', 'hsl(215,25%,98%)'), 0.95);
-  const bgBottom = hslaFrom(getCol('--card-bg', '#ffffff'), 0.9);
+  const bgTop = hslaFrom(getCol('--bg-color', UI_CHART_FALLBACK.labelBg), 0.95);
+  const bgBottom = hslaFrom(getCol('--card-bg', UI_CHART_FALLBACK.cardBg), 0.9);
   const bgGradient = ctx.createLinearGradient(0, padding.top, 0, cssHeight - padding.bottom);
   bgGradient.addColorStop(0, bgTop);
   bgGradient.addColorStop(1, bgBottom);
@@ -795,8 +935,8 @@ function renderTrendChart(canvasId, trend, overrides = null) {
   ctx.fillRect(padding.left, padding.top, chartWidth, chartHeight);
 
   // Axes with enhanced styling and gradient
-  const axisTop = hslaFrom(getCol('--text-secondary', '#a0aec0'), 0.9);
-  const axisBottom = hslaFrom(getCol('--border-color', '#cbd5e0'), 0.7);
+  const axisTop = hslaFrom(getCol('--text-secondary', UI_CHART_FALLBACK.mutedText), 0.9);
+  const axisBottom = hslaFrom(getCol('--border-color', UI_CHART_FALLBACK.gridLine), 0.7);
   const axisGradient = ctx.createLinearGradient(0, padding.top, 0, cssHeight - padding.bottom);
   axisGradient.addColorStop(0, axisTop);
   axisGradient.addColorStop(1, axisBottom);
@@ -811,14 +951,14 @@ function renderTrendChart(canvasId, trend, overrides = null) {
   // Gridlines + Y labels with enhanced styling
   const ySteps = 4;
   ctx.font = 'bold 11px Outfit';
-  ctx.fillStyle = cssVar('--text-secondary', '#718096');
+  ctx.fillStyle = cssVar('--text-secondary', UI_CHART_FALLBACK.axisText);
   for (let s = 0; s <= ySteps; s++) {
     const val = Math.round((maxVal / ySteps) * s);
     const y = cssHeight - padding.bottom - (val / maxVal) * chartHeight;
 
     // Alternating gridline opacity for better readability (theme aware)
-    const gridLight = hslaFrom(getCol('--border-color', '#e2e8f0'), 1);
-    const gridAlt = hslaFrom(getCol('--bg-color', '#f0f4f8'), 0.8);
+    const gridLight = hslaFrom(getCol('--border-color', UI_CHART_FALLBACK.border), 1);
+    const gridAlt = hslaFrom(getCol('--bg-color', UI_CHART_FALLBACK.trackBg), 0.8);
     ctx.strokeStyle = s % 2 === 0 ? gridLight : gridAlt;
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 3]);
@@ -829,9 +969,9 @@ function renderTrendChart(canvasId, trend, overrides = null) {
     ctx.setLineDash([]);
 
     // Y-axis label with background (use card background)
-    ctx.fillStyle = hslaFrom(getCol('--card-bg', '#ffffff'), 0.95);
+    ctx.fillStyle = hslaFrom(getCol('--card-bg', UI_CHART_FALLBACK.cardBg), 0.95);
     ctx.fillRect(2, y - 8, 30, 14);
-    ctx.fillStyle = getCol('--text-secondary', '#4a5568');
+    ctx.fillStyle = getCol('--text-secondary', UI_CHART_FALLBACK.textSecondary);
     ctx.fillText(val, 8, y + 3);
   }
 
@@ -845,13 +985,13 @@ function renderTrendChart(canvasId, trend, overrides = null) {
 
   // Create enhanced gradient for area fill
   // Create enhanced gradient for area fill from primary brand color
-  const primary = getCol('--ursb-blue', 'hsl(215,95%,28%)');
+  const primary = getCol('--brand-blue', UI_CHART_FALLBACK.brandBlue);
   const gradient = ctx.createLinearGradient(0, padding.top, 0, cssHeight - padding.bottom);
   gradient.addColorStop(0, hslaFrom(primary, 0.35));
   gradient.addColorStop(0.5, hslaFrom(primary, 0.15));
   gradient.addColorStop(1, hslaFrom(primary, 0.02));
   // Determine dark-mode heuristics to tune shadows/alphas
-  const bgForLuma = parseColor(getCol('--bg-color', 'hsl(215,25%,98%)'));
+  const bgForLuma = parseColor(getCol('--bg-color', UI_CHART_FALLBACK.labelBg));
   const luma = 0.2126 * bgForLuma.r + 0.7152 * bgForLuma.g + 0.0722 * bgForLuma.b;
   const isDark = luma < 128;
   // Fill area under SMOOTH line with gradient
@@ -889,7 +1029,7 @@ function renderTrendChart(canvasId, trend, overrides = null) {
   const lineShadowAlpha = isDark ? 0.18 : 0.25;
   const lineShadowBlur = isDark ? 5 : 8;
   const lineShadowOffsetY = isDark ? 2 : 3;
-  ctx.shadowColor = hslaFrom(getCol('--ursb-blue-dark', 'rgba(10,68,142,1)'), lineShadowAlpha);
+  ctx.shadowColor = hslaFrom(getCol('--brand-blue-dark', UI_CHART_FALLBACK.brandBlueDark), lineShadowAlpha);
   ctx.shadowBlur = lineShadowBlur;
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = lineShadowOffsetY;
@@ -897,9 +1037,9 @@ function renderTrendChart(canvasId, trend, overrides = null) {
   // Create gradient for line color
   const lineGradient = ctx.createLinearGradient(points[0].x, 0, points[points.length - 1].x, 0);
   // Line gradient from brand blue shades
-  const blueDark = getCol('--ursb-blue-dark', '#0a448e');
-  const blue = getCol('--ursb-blue', '#1e5ba8');
-  const blueLight = getCol('--ursb-blue-light', '#2d7ac4');
+  const blueDark = getCol('--brand-blue-dark', UI_CHART_FALLBACK.brandBlueDark);
+  const blue = getCol('--brand-blue', UI_CHART_FALLBACK.brandBlue);
+  const blueLight = getCol('--brand-blue-light', UI_CHART_FALLBACK.brandBlueLight);
   lineGradient.addColorStop(0, blueDark);
   lineGradient.addColorStop(0.5, blue);
   lineGradient.addColorStop(1, blueLight);
@@ -940,14 +1080,14 @@ function renderTrendChart(canvasId, trend, overrides = null) {
       ctx.beginPath();
       ctx.arc(p.x, p.y, 7 + i, 0, 2 * Math.PI);
       const outerAlphaBase = isDark ? 0.14 : 0.08;
-      ctx.fillStyle = hslaFrom(getCol('--ursb-blue-dark', '#0a448e'), outerAlphaBase / i);
+      ctx.fillStyle = hslaFrom(getCol('--brand-blue-dark', UI_CHART_FALLBACK.brandBlueDark), outerAlphaBase / i);
       ctx.fill();
     }
 
     // Inner circle with gradient
     const pointGradient = ctx.createRadialGradient(p.x - 2, p.y - 2, 0, p.x, p.y, 5);
-    pointGradient.addColorStop(0, getCol('--ursb-blue-light', '#2d7ac4'));
-    pointGradient.addColorStop(1, getCol('--ursb-blue-dark', '#0a448e'));
+    pointGradient.addColorStop(0, getCol('--brand-blue-light', UI_CHART_FALLBACK.brandBlueLight));
+    pointGradient.addColorStop(1, getCol('--brand-blue-dark', UI_CHART_FALLBACK.brandBlueDark));
     ctx.beginPath();
     ctx.arc(p.x, p.y, 5, 0, 2 * Math.PI);
     ctx.fillStyle = pointGradient;
@@ -955,41 +1095,41 @@ function renderTrendChart(canvasId, trend, overrides = null) {
 
     // White center dot with shadow
     // Inner white center dot shadow - softened in dark mode
-    ctx.shadowColor = hslaFrom(getCol('--ursb-blue-dark', '#0a448e'), isDark ? 0.22 : 0.3);
+    ctx.shadowColor = hslaFrom(getCol('--brand-blue-dark', UI_CHART_FALLBACK.brandBlueDark), isDark ? 0.22 : 0.3);
     ctx.shadowBlur = isDark ? 2 : 3;
     ctx.beginPath();
     ctx.arc(p.x, p.y, 2.5, 0, 2 * Math.PI);
-    ctx.fillStyle = getCol('--card-bg', '#ffffff');
+    ctx.fillStyle = getCol('--card-bg', UI_CHART_FALLBACK.cardBg);
     ctx.fill();
     ctx.shadowColor = 'transparent';
 
     // Value label above point with enhanced background
     ctx.font = 'bold 12px Outfit';
-    ctx.fillStyle = getCol('--text-primary', '#1a202c');
+    ctx.fillStyle = getCol('--text-primary', UI_CHART_FALLBACK.textPrimary);
     ctx.textAlign = 'center';
     const labelY = p.y - 20;
 
     // Background for label with shadow
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.1)';
+    ctx.shadowColor = isDark ? 'rgba(0, 0, 0, 0.45)' : 'rgba(0, 0, 0, 0.1)';
     ctx.shadowBlur = 3;
     ctx.shadowOffsetY = 1;
-    ctx.fillStyle = hslaFrom(getCol('--card-bg', '#ffffff'), 0.98);
+    ctx.fillStyle = hslaFrom(getCol('--card-bg', UI_CHART_FALLBACK.cardBg), 0.98);
     ctx.fillRect(p.x - 18, labelY - 11, 36, 18);
     ctx.shadowColor = 'transparent';
 
     // Border for label
-    ctx.strokeStyle = hslaFrom(getCol('--ursb-blue-dark', '#0a448e'), 0.15);
+    ctx.strokeStyle = hslaFrom(getCol('--brand-blue-dark', UI_CHART_FALLBACK.brandBlueDark), 0.15);
     ctx.lineWidth = 1;
     ctx.strokeRect(p.x - 18, labelY - 11, 36, 18);
 
     // Label text
-    ctx.fillStyle = getCol('--ursb-blue-dark', '#0a448e');
+    ctx.fillStyle = getCol('--brand-blue-dark', UI_CHART_FALLBACK.brandBlueDark);
     ctx.font = 'bold 11px Outfit';
     ctx.fillText(p.value, p.x, labelY + 3);
 
     // Date label below axis — show MM-DD for weekly buckets, YY-MM-DD for daily
     ctx.font = '10px Outfit';
-    ctx.fillStyle = getCol('--text-secondary', '#4a5568');
+    ctx.fillStyle = getCol('--text-secondary', UI_CHART_FALLBACK.textSecondary);
     const label = p.label ? p.label.substring(0, 10) : ''; // YYYY-MM-DD
     const displayLabel = label.length >= 10 ? label.substring(5) : label.substring(2); // MM-DD or YY-MM
     ctx.fillText(displayLabel, p.x, cssHeight - padding.bottom + 20);
@@ -1008,7 +1148,7 @@ function renderCategoryChart(canvasId, distributions, overrides = null) {
 
   if (distributions.length === 0) {
     ctx.font = '14px Outfit';
-    ctx.fillStyle = getCol('--text-secondary', '#718096');
+    ctx.fillStyle = getCol('--text-secondary', UI_CHART_FALLBACK.axisText);
     ctx.fillText('No asset categories to display', 40, 100);
     return;
   }
@@ -1021,7 +1161,7 @@ function renderCategoryChart(canvasId, distributions, overrides = null) {
   const maxVal = Math.max(...distributions.map(d => d.count), 5);
   
   // Draw axis lines (theme-aware)
-  ctx.strokeStyle = hslaFrom(getCol('--border-color', '#e2e8f0'), 1);
+  ctx.strokeStyle = hslaFrom(getCol('--border-color', UI_CHART_FALLBACK.border), 1);
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(padding, padding);
@@ -1039,17 +1179,17 @@ function renderCategoryChart(canvasId, distributions, overrides = null) {
     const y = canvas.height - padding - barHeight;
     
     // Draw Bar (theme primary)
-    ctx.fillStyle = getCol('--ursb-blue', '#0a448e');
+    ctx.fillStyle = getCol('--brand-blue', UI_CHART_FALLBACK.brandBlueDark);
     ctx.fillRect(x, y, barWidth, barHeight);
     
     // Draw Label (vertical or truncated)
     ctx.font = '11px Outfit';
-    ctx.fillStyle = getCol('--text-secondary', '#4a5568');
+    ctx.fillStyle = getCol('--text-secondary', UI_CHART_FALLBACK.textSecondary);
     const shortCat = d.category.length > 8 ? d.category.substring(0, 7) + '..' : d.category;
     ctx.fillText(shortCat, x - 2, canvas.height - padding + 15);
     
     // Draw Value on Top
-    ctx.fillStyle = getCol('--text-primary', '#1a202c');
+    ctx.fillStyle = getCol('--text-primary', UI_CHART_FALLBACK.textPrimary);
     ctx.font = 'bold 11px Outfit';
     ctx.fillText(d.count, x + barWidth / 2 - 4, y - 6);
   }
@@ -1197,7 +1337,7 @@ async function exportAssetRegisterPDF() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `URSB_Asset_Register_${new Date().toISOString().split("T")[0]}.pdf`;
+    link.download = `Asset_Register_${new Date().toISOString().split("T")[0]}.pdf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1215,7 +1355,7 @@ function exportAssetRegisterCSV() {
     return;
   }
   
-  let csvContent = 'Asset ID,Asset Name,Type,Category,Serial Number,Condition,Acquisition Date,Cost (UGX),Supplier,Source,Assignee,Department,Status\n';
+  let csvContent = `Asset ID,Asset Name,Type,Category,Serial Number,Condition,Acquisition Date,Cost (${UI_CURRENCY()}),Supplier,Source,Assignee,Department,Status\n`;
   
   cacheData.assets.forEach(a => {
     const assignee = a.assigned_to_name ? a.assigned_to_name.replace(/"/g, '""') : '';
@@ -1227,7 +1367,7 @@ function exportAssetRegisterCSV() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.setAttribute('href', url);
-  link.setAttribute('download', `URSB_Asset_Register_${new Date().toISOString().split('T')[0]}.csv`);
+  link.setAttribute('download', `Asset_Register_${new Date().toISOString().split('T')[0]}.csv`);
   link.style.visibility = 'hidden';
   document.body.appendChild(link);
   link.click();
@@ -1436,7 +1576,7 @@ function renderMyAssetsTableRows(assignments, requests, isFiltered = false) {
     const receiptStatusClass = r.received_status ? r.received_status.toLowerCase().replace(' ', '-') : 'pending';
     
     html += `
-      <tr class="request-row" style="background-color: rgba(10, 68, 142, 0.02);">
+      <tr class="request-row" style="background-color: var(--brand-blue-trans);">
         <td>#REQ-${escapeHtml(r.id)}</td>
         <td>${escapeHtml(r.asset_name)}</td>
         <td>${escapeHtml(r.asset_type || '-')}</td>
@@ -1771,7 +1911,7 @@ async function renderMaintenanceView(container) {
                 <th>Asset ID</th>
                 <th>Asset Name</th>
                 <th>Service Provider</th>
-                <th>Cost (UGX)</th>
+                <th>Cost (${UI_CURRENCY()})</th>
                 <th>Service Date</th>
                 <th>Expected Completion</th>
                 <th>Next Service Due</th>
@@ -1950,9 +2090,9 @@ function renderMaintenanceTableRows(records) {
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       
       if (diffDays < 0) {
-        daysInfo = `<span style="color: #c53030; font-weight: 600;">${Math.abs(diffDays)} days overdue</span>`;
+        daysInfo = `<span style="color: var(--color-disposed); font-weight: 600;">${Math.abs(diffDays)} days overdue</span>`;
       } else if (diffDays <= 7) {
-        daysInfo = `<span style="color: #e65100; font-weight: 600;">${diffDays} days remaining</span>`;
+        daysInfo = `<span style="color: var(--color-maint); font-weight: 600;">${diffDays} days remaining</span>`;
       }
     }
     
@@ -1961,9 +2101,9 @@ function renderMaintenanceTableRows(records) {
         <td><strong>${escapeHtml(m.asset_id)}</strong></td>
         <td>${escapeHtml(m.asset_name)}</td>
         <td>${escapeHtml(m.service_provider)}</td>
-        <td>UGX ${escapeHtml(Number(m.cost).toLocaleString(undefined, { maximumFractionDigits: 0 }))}</td>
+        <td>${escapeHtml(formatMoney(m.cost))}</td>
         <td>${escapeHtml(m.service_date)}</td>
-        <td>${m.expected_completion_date ? `<span style="${readyForReview ? 'color:#c53030;font-weight:600;' : ''}">${escapeHtml(m.expected_completion_date)}</span>` : 'N/A'}</td>
+        <td>${m.expected_completion_date ? `<span style="${readyForReview ? 'color:var(--color-disposed);font-weight:600;' : ''}">${escapeHtml(m.expected_completion_date)}</span>` : 'N/A'}</td>
         <td>
           <div>${escapeHtml(m.next_service_date || 'N/A')}</div>
           ${daysInfo}
@@ -2029,7 +2169,7 @@ async function completeMaintenancePrompt(maintenanceId, assetId) {
       const today = new Date().toISOString().split('T')[0];
       const isOverdue = maintenance.expected_completion_date < today;
       timingNote.innerHTML = isOverdue
-        ? `<span style="color:#c53030;font-weight:600;">Estimated completion was ${escapeHtml(maintenance.expected_completion_date)} — this is now overdue against that estimate.</span>`
+        ? `<span style="color:var(--color-disposed);font-weight:600;">Estimated completion was ${escapeHtml(maintenance.expected_completion_date)} — this is now overdue against that estimate.</span>`
         : `Estimated completion date: <strong>${escapeHtml(maintenance.expected_completion_date)}</strong>.`;
     } else {
       timingNote.textContent = '';
@@ -2118,7 +2258,7 @@ async function submitCompleteMaintenance() {
         completionDate,
         nextStatus,
         assignToId,
-        disposalMethod: 'Scrapped',
+        disposalMethod: UI_ENUM_VALUES('disposalMethods')[0] || 'Scrapped',
         disposalReason: 'Too foregone/damaged beyond repair after maintenance'
       })
     });
@@ -2234,7 +2374,7 @@ async function loadDisposalsTableRows(disposedAssets) {
         <td>${escapeHtml(asset.name)}</td>
         <td>${escapeHtml(asset.type)}</td>
         <td>${escapeHtml(asset.serial_number)}</td>
-        <td>UGX ${escapeHtml(Number(asset.cost).toLocaleString(undefined, { maximumFractionDigits: 0 }))}</td>
+        <td>${escapeHtml(formatMoney(asset.cost))}</td>
         <td>
           ${disp ? `
             <strong>Method:</strong> ${escapeHtml(disp.method)}<br>
@@ -2569,7 +2709,7 @@ function closeAllModals() {
 
 // ================= THEME HANDLING =================
 function applyTheme(theme) {
-  const vars = ['--ursb-blue','--ursb-blue-dark','--ursb-blue-light','--card-bg','--bg-color','--text-primary','--text-secondary','--border-color'];
+  const vars = ['--brand-blue','--brand-blue-dark','--brand-blue-light','--card-bg','--bg-color','--text-primary','--text-secondary','--border-color'];
   const before = getComputedStyle(document.body);
   const startPalette = {};
   vars.forEach(v => startPalette[v] = (before.getPropertyValue(v) || '').trim() || null);
@@ -2670,7 +2810,7 @@ async function viewAssetDetails(assetId) {
     statusBadge.textContent = data.asset.status;
     
     document.getElementById('det-acq-date').textContent = data.asset.acquisition_date;
-    document.getElementById('det-cost').textContent = `UGX ${Number(data.asset.cost).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+    document.getElementById('det-cost').textContent = formatMoney(data.asset.cost);
     document.getElementById('det-supplier').textContent = data.asset.supplier;
     document.getElementById('det-source').textContent = data.asset.source;
     
@@ -2735,7 +2875,7 @@ async function viewAssetDetails(assetId) {
       events.push({
         date: m.service_date,
         title: `Servicing Open - ${m.service_provider}`,
-        desc: `Diagnostic: ${m.description}. Cost: UGX ${Number(m.cost).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+        desc: `Diagnostic: ${m.description}. Cost: ${formatMoney(m.cost)}`,
         class: 'maintenance'
       });
       if (m.completed === 1) {
@@ -2927,12 +3067,12 @@ async function submitBulkImport() {
       type: cols[1] || '',
       category: cols[2] || '',
       serial_number: cols[3] || '',
-      condition: cols[4] || 'Good',
+      condition: cols[4] || UI_ENUM_VALUES('assetConditions')[1] || 'Good',
       acquisition_date: cols[5] || new Date().toISOString().split('T')[0],
       cost: cols[6] || 0,
       supplier: cols[7] || 'Unknown',
-      source: cols[8] || 'Procurement',
-      status: cols[9] || 'In Storage'
+      source: cols[8] || UI_ENUM_VALUES('assetSources')[0] || 'Procurement',
+      status: cols[9] || UI_ENUM_VALUES('assetStatuses')[1] || 'In Storage'
     };
   });
 
@@ -2978,8 +3118,8 @@ async function submitChangeOwnPassword(e) {
     document.getElementById('own-pass-current').focus();
     return;
   }
-  if (!newPassword || newPassword.length < 6) {
-    showToast('New password must be at least 6 characters.', 'warning');
+  if (!newPassword || newPassword.length < UI_PASSWORD_MIN()) {
+    showToast(`New password must be at least ${UI_PASSWORD_MIN()} characters.`, 'warning');
     document.getElementById('own-pass-new').focus();
     return;
   }
@@ -3561,8 +3701,8 @@ async function submitUserForm(e) {
   
   if (!isEdit) {
     const password = document.getElementById('usr-password').value;
-    if (!password || password.length < 6) {
-      showToast('Password is required and must be at least 6 characters.', 'warning');
+    if (!password || password.length < UI_PASSWORD_MIN()) {
+      showToast(`Password is required and must be at least ${UI_PASSWORD_MIN()} characters.`, 'warning');
       document.getElementById('usr-password').focus();
       releaseFormLock('user-form');
       return;
@@ -3607,8 +3747,8 @@ async function submitResetPassword(e) {
   e.preventDefault();
   const id = document.getElementById('change-pass-user-id').value;
   const newPassword = document.getElementById('change-pass-new').value;
-  if (!newPassword || newPassword.length < 6) {
-    showToast('New password must be at least 6 characters.', 'warning');
+  if (!newPassword || newPassword.length < UI_PASSWORD_MIN()) {
+    showToast(`New password must be at least ${UI_PASSWORD_MIN()} characters.`, 'warning');
     document.getElementById('change-pass-new').focus();
     return;
   }
@@ -3857,19 +3997,72 @@ function sortTable(tableId, colIndex) {
 
 // ================= LOGIN PAGE SLIDESHOW =================
 (function initLoginSlideshow() {
-  const slides = document.querySelectorAll('#login-slideshow .slide');
+  const container = document.getElementById('login-slideshow');
+  if (!container) return;
+  const slides = Array.from(container.querySelectorAll('.slide'));
   if (!slides.length) return;
+
+  const REDUCED_MOTION = window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const INTERVAL = REDUCED_MOTION ? 20000 : 7000;
+
+  const loaded = new Set();
+  let failures = 0;
+  let total = 0;
+
+  // If no slide managed to load an image, hide the scrim so the .auth-wrapper
+  // brand background shows instead of a flat dark wash.
+  const dropScrim = () => {
+    container.style.display = 'none';
+    const overlay = document.querySelector('.auth-overlay');
+    if (overlay) overlay.style.display = 'none';
+  };
+
+  // One Image per slide, created only as that slide is scheduled. Pre-creating
+  // them all up front would kick off every download in parallel and defeat the
+  // idle scheduling below.
+  const loadSlide = (slide) => {
+    const src = slide.dataset.image;
+    if (!src || loaded.has(slide) || slide.dataset.failed === '1') return;
+    loaded.add(slide);
+    total += 1;
+
+    const probe = new Image();
+    probe.onload = () => {
+      slide.style.backgroundImage = `url('${src}')`;
+    };
+    probe.onerror = () => {
+      slide.dataset.failed = '1';
+      failures += 1;
+      // Keep at least one visible slide; only strip the scrim if nothing loaded.
+      if (failures === total && loaded.size - failures === 0) dropScrim();
+    };
+    probe.src = src;
+  };
+
+  loadSlide(slides[0]);
+  const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 200));
+  for (let i = 1; i < slides.length; i++) {
+    idle(() => loadSlide(slides[i]));
+  }
 
   let current = 0;
 
   function showNext() {
-    slides[current].classList.remove('active');
-    current = (current + 1) % slides.length;
-    slides[current].classList.add('active');
+    // Advance to the next slide that actually has a decoded image, so a
+    // missing/slow image can't stall the rotation on an empty frame.
+    for (let step = 1; step <= slides.length; step++) {
+      const i = (current + step) % slides.length;
+      if (slides[i].style.backgroundImage) {
+        slides[current].classList.remove('active');
+        current = i;
+        slides[current].classList.add('active');
+        return;
+      }
+    }
   }
 
-  // Switch every 10 seconds
-  setInterval(showNext, 10000);
+  setInterval(showNext, INTERVAL);
 })();
 
 // ================================================================

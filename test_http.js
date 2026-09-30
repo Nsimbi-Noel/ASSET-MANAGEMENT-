@@ -19,6 +19,11 @@ process.env.PORT = '0'; // ephemeral port — read back from the listening serve
 
 const { server } = require('./server');
 const { dbReady } = require('./db');
+const C = require('./constants');
+
+// Bootstrap credentials come from the environment (see .env.example), so the
+// tests must read the same values rather than assume development defaults.
+const ADMIN_PASSWORD = process.env.BOOTSTRAP_ADMIN_PASSWORD || 'admin123';
 
 const green = '\x1b[32m';
 const reset = '\x1b[0m';
@@ -66,7 +71,7 @@ async function main() {
 
   // 1. Login returns 200, sets HttpOnly SameSite=Strict cookie, and does NOT
   //    leak the session id in the JSON body (S-8).
-  const login = await httpRequest(port, 'POST', '/api/auth/login', { body: { username: 'admin', password: 'admin123' } });
+  const login = await httpRequest(port, 'POST', '/api/auth/login', { body: { username: 'admin', password: ADMIN_PASSWORD } });
   assert.strictEqual(login.status, 200, 'Login should return 200');
   const cookies = parseCookies(login.headers['set-cookie']);
   assert.ok(cookies.session, 'Login should set a session cookie');
@@ -106,6 +111,57 @@ async function main() {
   assert.ok(/Asset Management System/.test(page), 'Index page should be served');
   assert.ok(!/images\.unsplash\.com/.test(page), 'Login carousel should not depend on unsplash.com');
   console.log(`${green}✓ Static index served without external image dependencies${reset}`);
+
+  // 6. /api/config publishes the shared enums and needs no authentication, so
+  // the client can build every dropdown from one source of truth.
+  const config = await httpRequest(port, 'GET', '/api/config');
+  assert.strictEqual(config.status, 200, '/api/config should be publicly readable');
+  assert.deepStrictEqual(config.json.roles, C.ROLE_VALUES, 'roles should match constants.js');
+  assert.deepStrictEqual(config.json.assetStatuses, C.ASSET_STATUS_VALUES, 'assetStatuses should match constants.js');
+  assert.deepStrictEqual(config.json.assetSources, C.ASSET_SOURCE_VALUES, 'assetSources should match constants.js');
+  assert.deepStrictEqual(config.json.assetConditions, C.ASSET_CONDITION_VALUES, 'assetConditions should match constants.js');
+  assert.deepStrictEqual(config.json.disposalMethods, C.DISPOSAL_METHODS, 'disposalMethods should match constants.js');
+  assert.deepStrictEqual(config.json.receivedStatuses, C.RECEIVED_STATUS_VALUES, 'receivedStatuses should match constants.js');
+  assert.strictEqual(config.json.currency, C.CURRENCY, 'currency should match constants.js');
+  assert.strictEqual(config.json.passwordMinLength, C.PASSWORD_MIN_LENGTH, 'passwordMinLength should match constants.js');
+  // Every published source must be one the API will actually accept.
+  assert.ok(config.json.assetSources.includes(C.ASSET_SOURCE.LEASE), 'Lease must be published (it used to be unreachable in the UI)');
+  console.log(`${green}✓ /api/config publishes enums matching constants.js${reset}`);
+
+  // 7. The login page must not hardcode option lists any more; each enum
+  // select is marked with data-enum and hydrated from /api/config.
+  for (const sel of ['reg-category', 'reg-condition', 'reg-source', 'reg-status',
+                     'edit-category', 'edit-condition', 'edit-source', 'edit-status',
+                     'disp-method', 'followup-received-status', 'usr-role', 'usr-status']) {
+    const re = new RegExp(`<select id="${sel}"[^>]*data-enum="[^"]+"[^>]*>\\s*</select>`);
+    assert.ok(re.test(page), `${sel} should be an empty select carrying data-enum`);
+  }
+  console.log(`${green}✓ Login page selects are config-driven, not duplicated HTML${reset}`);
+
+  // 8. Logout slides images are actually served with the right content type.
+  for (const slide of ['01-circuit', '02-server-room', '03-engineer', '05-storage']) {
+    const img = await new Promise((resolve, reject) => {
+      require('http').request({ host: '127.0.0.1', port, method: 'GET', path: `/slides/${slide}.jpg` }, res => {
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => resolve({ status: res.statusCode, type: res.headers['content-type'], buf: Buffer.concat(chunks) }));
+      }).on('error', reject).end();
+    });
+    assert.strictEqual(img.status, 200, `${slide}.jpg should be served`);
+    assert.strictEqual(img.type, 'image/jpeg', `${slide}.jpg should be image/jpeg`);
+    assert.strictEqual(img.buf[0], 0xff, `${slide}.jpg should start with a JPEG SOI marker`);
+    assert.strictEqual(img.buf[1], 0xd8, `${slide}.jpg should start with a JPEG SOI marker`);
+  }
+  console.log(`${green}✓ All login slideshow images are served as valid JPEGs${reset}`);
+
+  // 9. No production password may be committed to source. The bootstrap and
+  // seed passwords must come from the environment.
+  const dbSrc = require('fs').readFileSync(path.join(__dirname, 'db.js'), 'utf8');
+  const seedSrc = require('fs').readFileSync(path.join(__dirname, 'seed.js'), 'utf8');
+  assert.ok(!/hashPassword\('[^']+'\)/.test(dbSrc), 'db.js must not hardcode a password passed to hashPassword');
+  assert.ok(!/hashPassword\('[^']+'\)/.test(seedSrc), 'seed.js must not hardcode a password passed to hashPassword');
+  assert.ok(/NODE_ENV\s*===\s*'production'/.test(dbSrc), 'db.js must require bootstrap passwords in production');
+  console.log(`${green}✓ No bootstrap or seed password is hardcoded in source${reset}`);
 
   console.log(`\n${green}=========================================`);
   console.log(`ALL HTTP TESTS PASSED SUCCESSFULLY!`);
